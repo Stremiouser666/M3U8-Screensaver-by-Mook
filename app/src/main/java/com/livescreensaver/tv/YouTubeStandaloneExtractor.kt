@@ -208,20 +208,24 @@ class YouTubeStandaloneExtractor(
             
             val streamingData = jsonObject.getJSONObject("streamingData")
             
+            // Priority 1: HLS manifest (best for adaptive streaming, up to 4K)
             val hlsUrl = streamingData.optString("hlsManifestUrl")
             if (hlsUrl.isNotEmpty()) {
-                debugLog("✓ Found HLS manifest URL")
+                debugLog("✓ Found HLS manifest URL (adaptive, best quality)")
                 return hlsUrl
             }
             
+            // Priority 2: DASH manifest (adaptive, ExoPlayer merges video+audio automatically)
             val dashUrl = streamingData.optString("dashManifestUrl")
             if (dashUrl.isNotEmpty()) {
-                debugLog("✓ Found DASH manifest URL")
+                debugLog("✓ Found DASH manifest URL (adaptive, up to 4K)")
                 return dashUrl
             }
             
+            // Priority 3: Progressive formats (video+audio combined, usually 360p-720p)
             val formats = streamingData.optJSONArray("formats")
             if (formats != null && formats.length() > 0) {
+                debugLog("Checking ${formats.length()} progressive formats...")
                 var bestUrl: String? = null
                 var bestHeight = 0
                 
@@ -229,16 +233,46 @@ class YouTubeStandaloneExtractor(
                     val format = formats.getJSONObject(i)
                     val url = format.optString("url")
                     val height = format.optInt("height", 0)
+                    val mimeType = format.optString("mimeType", "")
                     
-                    if (url.isNotEmpty() && height > bestHeight) {
+                    if (url.isNotEmpty() && height > bestHeight && mimeType.contains("video")) {
                         bestUrl = url
                         bestHeight = height
                     }
                 }
                 
                 if (bestUrl != null) {
-                    debugLog("✓ Found progressive format: ${bestHeight}p")
+                    debugLog("✓ Found progressive format: ${bestHeight}p (video+audio combined)")
                     return bestUrl
+                }
+            }
+            
+            // Priority 4: Adaptive formats (video-only, higher quality but needs audio merge)
+            // ExoPlayer can handle DASH which includes separate streams
+            val adaptiveFormats = streamingData.optJSONArray("adaptiveFormats")
+            if (adaptiveFormats != null && adaptiveFormats.length() > 0) {
+                debugLog("⚠️ Only adaptive formats available (video-only)")
+                debugLog("Note: ExoPlayer may not play video-only URLs without DASH manifest")
+                
+                // Find highest quality video format
+                var bestVideoUrl: String? = null
+                var bestHeight = 0
+                
+                for (i in 0 until adaptiveFormats.length()) {
+                    val format = adaptiveFormats.getJSONObject(i)
+                    val url = format.optString("url")
+                    val height = format.optInt("height", 0)
+                    val mimeType = format.optString("mimeType", "")
+                    
+                    if (url.isNotEmpty() && mimeType.contains("video") && height > bestHeight) {
+                        bestVideoUrl = url
+                        bestHeight = height
+                    }
+                }
+                
+                if (bestVideoUrl != null) {
+                    debugLog("⚠️ Using video-only URL: ${bestHeight}p (NO AUDIO)")
+                    return bestVideoUrl
                 }
             }
             
