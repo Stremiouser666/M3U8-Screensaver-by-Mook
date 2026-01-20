@@ -103,6 +103,9 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
             isInteractive = false
             isFullscreen = true
             isScreenBright = true
+            
+            FileLogger.enable(this)
+            FileLogger.log("🚀 LiveScreensaverService starting...")
 
             preferences = PreferenceManager.getDefaultSharedPreferences(this)
             cachePrefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -446,7 +449,9 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
 
     override fun onDreamingStopped() {
         super.onDreamingStopped()
+        FileLogger.log("🛑 LiveScreensaverService stopping...")
         releasePlayer()
+        FileLogger.disable()
     }
 
     override fun onDetachedFromWindow() {
