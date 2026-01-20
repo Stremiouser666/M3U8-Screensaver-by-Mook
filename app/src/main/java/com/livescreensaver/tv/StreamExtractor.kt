@@ -33,7 +33,7 @@ class StreamExtractor(
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
     
-    private val standaloneExtractor = YouTubeStandaloneExtractor()
+    private val standaloneExtractor = YouTubeStandaloneExtractor(context, httpClient)
 
     fun needsExtraction(url: String): Boolean {
         return !url.contains(".m3u8") && 
@@ -54,58 +54,78 @@ class StreamExtractor(
 
     suspend fun extractStreamUrl(sourceUrl: String, forceRefresh: Boolean, cacheExpirationSeconds: Long): String? = withContext(Dispatchers.IO) {
         try {
+            FileLogger.log("🎬 Starting extraction for: $sourceUrl", TAG)
+            
             if (!isNetworkAvailable()) {
+                FileLogger.log("📵 No network available - using cached URL", TAG)
                 Log.w(TAG, "📵 No network available - using cached URL")
                 return@withContext cachePrefs.getString(KEY_EXTRACTED_URL, null) ?: sourceUrl
             }
 
             if (sourceUrl.contains("rutube.ru", ignoreCase = true)) {
+                FileLogger.log("🎬 Extracting Rutube URL...", TAG)
                 Log.d(TAG, "🎬 Extracting Rutube URL...")
                 val extractedUrl = extractRutubeUrl(sourceUrl)
                 if (extractedUrl != null) {
                     saveToCache(sourceUrl, extractedUrl, "rutube")
+                    FileLogger.log("✅ Rutube extraction succeeded: $extractedUrl", TAG)
+                } else {
+                    FileLogger.log("❌ Rutube extraction failed", TAG)
                 }
                 return@withContext extractedUrl
             }
             
+            FileLogger.log("🎬 Extracting YouTube URL...", TAG)
             Log.d(TAG, "🎬 Extracting YouTube URL...")
             
             // Try standalone extractor first
             try {
+                FileLogger.log("🔧 Trying standalone extractor...", TAG)
                 val standaloneResult = standaloneExtractor.extractStream(sourceUrl)
                 if (standaloneResult.success && standaloneResult.streamUrl != null) {
+                    FileLogger.log("✅ Standalone extractor succeeded: ${standaloneResult.quality}", TAG)
+                    FileLogger.log("📺 Stream URL: ${standaloneResult.streamUrl}", TAG)
                     Log.d(TAG, "✅ Standalone extractor succeeded: ${standaloneResult.quality}")
                     saveToCache(sourceUrl, standaloneResult.streamUrl, "youtube")
                     return@withContext standaloneResult.streamUrl
                 } else {
+                    FileLogger.log("⚠️ Standalone extractor failed: ${standaloneResult.errorMessage}", TAG)
                     Log.w(TAG, "⚠️ Standalone extractor failed: ${standaloneResult.errorMessage}")
                 }
             } catch (e: Exception) {
+                FileLogger.logError("Standalone extractor exception", e, TAG)
                 Log.e(TAG, "❌ Standalone extractor exception", e)
             }
             
             // Fallback to NewPipe
             try {
+                FileLogger.log("🔄 Trying NewPipe as fallback...", TAG)
                 Log.d(TAG, "🔄 Trying NewPipe as fallback...")
                 NewPipe.init(DownloaderImpl())
                 val info = StreamInfo.getInfo(sourceUrl)
                 val extractedUrl = info.hlsUrl
                 
                 if (extractedUrl != null) {
+                    FileLogger.log("✅ NewPipe extraction succeeded", TAG)
+                    FileLogger.log("📺 Stream URL: $extractedUrl", TAG)
                     Log.d(TAG, "✅ NewPipe extraction succeeded")
                     saveToCache(sourceUrl, extractedUrl, "youtube")
                     return@withContext extractedUrl
                 } else {
+                    FileLogger.log("❌ NewPipe returned null HLS URL", TAG)
                     Log.e(TAG, "❌ NewPipe returned null HLS URL")
                 }
             } catch (e: Exception) {
+                FileLogger.logError("NewPipe extraction exception", e, TAG)
                 Log.e(TAG, "❌ NewPipe extraction exception", e)
             }
             
             // Both methods failed
+            FileLogger.log("❌ All YouTube extraction methods failed for: $sourceUrl", TAG)
             Log.e(TAG, "❌ All YouTube extraction methods failed")
             null
         } catch (e: Exception) {
+            FileLogger.logError("Extraction failed", e, TAG)
             Log.e(TAG, "Extraction failed: ${e.message}", e)
             null
         }
