@@ -34,7 +34,6 @@ M3u8 Screensaver turns your Android TV into a beautiful display by playing video
 - Digital signage and displays
 - Background entertainment
 - Content rotation by day of week
-- Educational or promotional video display
 
 ---
 
