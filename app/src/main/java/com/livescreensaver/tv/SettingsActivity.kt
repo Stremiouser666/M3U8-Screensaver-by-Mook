@@ -67,12 +67,16 @@ class SettingsActivity : FragmentActivity() {
             .readTimeout(15, TimeUnit.SECONDS)
             .build()
         
+        private lateinit var youtubeExtractor: YouTubeStandaloneExtractor
+        
         private val handler = Handler(Looper.getMainLooper())
         private var lastProcessedUrl = ""
         
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             val context = preferenceManager.context
             val screen = preferenceManager.createPreferenceScreen(context)
+            
+            youtubeExtractor = YouTubeStandaloneExtractor(requireContext(), httpClient)
 
             // === MAIN URL SECTION ===
             val videoUrlPref = EditTextPreference(context).apply {
@@ -93,11 +97,21 @@ class SettingsActivity : FragmentActivity() {
                 setOnPreferenceChangeListener { _, newValue ->
                     val url = newValue.toString().trim()
                     
-                    if (isRutubeUrl(url) && url != lastProcessedUrl) {
+                    if (url != lastProcessedUrl) {
                         lastProcessedUrl = url
-                        handler.postDelayed({
-                            autoExtractRutube(url, this)
-                        }, 500)
+                        
+                        when {
+                            isRutubeUrl(url) -> {
+                                handler.postDelayed({
+                                    autoExtractRutube(url, this)
+                                }, 500)
+                            }
+                            isYouTubeUrl(url) -> {
+                                handler.postDelayed({
+                                    autoExtractYouTube(url, this)
+                                }, 500)
+                            }
+                        }
                     }
                     true
                 }
@@ -204,6 +218,24 @@ class SettingsActivity : FragmentActivity() {
                         val suffix = if (isDisabled) " (DISABLED)" else ""
                         (preference.text?.takeIf { it.isNotEmpty() } 
                             ?: getString(R.string.pref_url_day_summary)) + suffix
+                    }
+                    
+                    setOnPreferenceChangeListener { _, newValue ->
+                        val url = newValue.toString().trim()
+                        
+                        when {
+                            isRutubeUrl(url) -> {
+                                handler.postDelayed({
+                                    autoExtractRutube(url, this)
+                                }, 500)
+                            }
+                            isYouTubeUrl(url) -> {
+                                handler.postDelayed({
+                                    autoExtractYouTube(url, this)
+                                }, 500)
+                            }
+                        }
+                        true
                     }
                 }
                 scheduleCategory.addPreference(dayUrlPref)
@@ -415,7 +447,7 @@ class SettingsActivity : FragmentActivity() {
             audioCategory.addPreference(audioVolumePref)
 
             // === CLOCK OVERLAY SECTION ===
-            val clockCategory = PreferenceCategory(context).apply {
+val clockCategory = PreferenceCategory(context).apply {
                 key = "category_clock"
                 title = getString(R.string.pref_category_clock)
             }
@@ -646,6 +678,41 @@ class SettingsActivity : FragmentActivity() {
             return url.contains("rutube.ru", ignoreCase = true)
         }
         
+        private fun isYouTubeUrl(url: String): Boolean {
+            return url.contains("youtube.com", ignoreCase = true) || 
+                   url.contains("youtu.be", ignoreCase = true)
+        }
+        
+        private fun autoExtractYouTube(youtubeUrl: String, preference: EditTextPreference) {
+            showToast("Extracting YouTube stream...")
+            
+            CoroutineScope(Dispatchers.Main).launch {
+                try {
+                    val result = youtubeExtractor.extractStream(youtubeUrl)
+                    
+                    if (result.success && result.streamUrl != null) {
+                        preference.text = result.streamUrl
+                        
+                        val cachePrefs = requireContext().getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        cachePrefs.edit()
+                            .putString(KEY_ORIGINAL_URL, youtubeUrl)
+                            .putString(KEY_EXTRACTED_URL, result.streamUrl)
+                            .putString(KEY_URL_TYPE, "youtube")
+                            .apply()
+                        
+                        showToast("✅ YouTube extracted (${result.quality ?: "Unknown"})")
+                        Log.d(TAG, "YouTube URL extracted: ${result.streamUrl}")
+                    } else {
+                        showToast("❌ YouTube extraction failed: ${result.errorMessage ?: "Unknown error"}")
+                        Log.e(TAG, "Failed to extract YouTube URL: ${result.errorMessage}")
+                    }
+                } catch (e: Exception) {
+                    showToast("❌ YouTube extraction error")
+                    Log.e(TAG, "YouTube extraction error", e)
+                }
+            }
+        }
+        
         private fun autoExtractRutube(rutubeUrl: String, preference: EditTextPreference) {
             showToast(getString(R.string.toast_rutube_extracting))
             
@@ -762,3 +829,4 @@ class SettingsActivity : FragmentActivity() {
         private fun String.capitalize() = this.replaceFirstChar { it.uppercase() }
     }
 }
+       
