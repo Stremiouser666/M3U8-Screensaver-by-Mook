@@ -27,7 +27,7 @@ A enhanced screensaver application for Android TV that transforms your device in
 
 ## 🎯 Overview
 
-Live Screensaver turns your Android TV into a beautiful display by playing video streams when your device is idle. Whether you want to display live broadcasts, scheduled content, or curated video feeds, this application provides professional-grade control over every aspect of the playback experience.
+M3u8 Screensaver turns your Android TV into a beautiful display by playing video streams when your device is idle. Whether you want to display live broadcasts, scheduled content, or curated video feeds, this application provides professional-grade control over every aspect of the playback experience.
 
 **Perfect for:**
 - Live event viewing
@@ -57,7 +57,7 @@ Live Screensaver turns your Android TV into a beautiful display by playing video
 
 ### Offline Support
 
-Live Screensaver includes intelligent stream caching to maintain playback during temporary network interruptions:
+M3u8 Screensaver includes intelligent stream caching to maintain playback during temporary network interruptions:
 
 **How It Works:**
 - **URL Caching**: Extracted stream URLs (HLS manifests) from YouTube and Rutube are cached locally for up to 5 minutes
@@ -123,10 +123,10 @@ Live Screensaver includes intelligent stream caching to maintain playback during
 
 1. **Go to Settings**
    - TV Settings → Device Preferences → Screen saver → Screen saver
-   - Select "Live Screensaver" from the list
+   - Select "M3u8 Screensaver" from the list
 
 2. **Enter a Stream URL**
-   - Open Live Screensaver Settings
+   - Open M3u8 Screensaver Settings
    - Navigate to **Stream URL**
    - Enter your video URL (see URL Formats below)
 
@@ -354,7 +354,7 @@ Display time while screensaver plays:
 
 ### Required Permissions
 
-Live Screensaver for Android TV requires the following permissions to function properly:
+M3u8 Screensaver for Android TV requires the following permissions to function properly:
 
 | Permission | Purpose |
 |-----------|---------|
@@ -447,7 +447,7 @@ Replace `DEVICE_IP_ADDRESS` with your TV's IP address.
 
 ### Viewing Logcat
 
-**View all Live Screensaver logs:**
+**View all M3u8 Screensaver logs:**
 ```bash
 adb logcat | grep LiveScreensaver
 ```
