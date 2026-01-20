@@ -149,6 +149,7 @@ class YouTubeStandaloneExtractor(
                 put("context", contextJson)
                 put("contentCheckOk", true)
                 put("racyCheckOk", true)
+                put("params", "8AEB")  // Request all formats including manifests
             }
 
             val userAgent = if (clientName == "ANDROID") {
@@ -223,20 +224,20 @@ class YouTubeStandaloneExtractor(
             val streamingData = jsonObject.getJSONObject("streamingData")
             debugLog("--- Analyzing streaming data ---")
 
-            // Priority 1: DASH manifest (adaptive streaming, up to 4K)
-            val dashUrl = streamingData.optString("dashManifestUrl")
+            // Priority 1: HLS manifest (best for live streams, adaptive up to 1080p+)
+            val hlsUrl = streamingData.optString("hlsManifestUrl", "")
+            if (hlsUrl.isNotEmpty()) {
+                debugLog("✓ Found HLS manifest URL (adaptive, live streaming)")
+                debugLog("HLS URL: ${hlsUrl.take(100)}...")
+                return Pair(hlsUrl, "HLS manifest")
+            }
+
+            // Priority 2: DASH manifest (adaptive streaming, up to 4K)
+            val dashUrl = streamingData.optString("dashManifestUrl", "")
             if (dashUrl.isNotEmpty()) {
                 debugLog("✓ Found DASH manifest URL (adaptive, up to 4K)")
                 debugLog("DASH URL: ${dashUrl.take(100)}...")
                 return Pair(dashUrl, "DASH manifest")
-            }
-
-            // Priority 2: HLS manifest (adaptive streaming, good for live)
-            val hlsUrl = streamingData.optString("hlsManifestUrl")
-            if (hlsUrl.isNotEmpty()) {
-                debugLog("✓ Found HLS manifest URL (adaptive)")
-                debugLog("HLS URL: ${hlsUrl.take(100)}...")
-                return Pair(hlsUrl, "HLS manifest")
             }
 
             // Priority 3: Adaptive formats (video-only, highest quality)
@@ -288,25 +289,39 @@ class YouTubeStandaloneExtractor(
 
                 for (i in 0 until formats.length()) {
                     val format = formats.getJSONObject(i)
-                    val url = format.optString("url")
+                    var url = format.optString("url", "")
+                    
+                    // If no direct URL, check for signatureCipher (YouTube obfuscation)
+                    if (url.isEmpty() && format.has("signatureCipher")) {
+                        debugLog("⚠️ Format has signatureCipher instead of direct URL (signature decryption needed)")
+                        // For now, skip these formats - they require signature decryption
+                        continue
+                    }
+                    
                     val height = format.optInt("height", 0)
                     val width = format.optInt("width", 0)
                     val quality = format.optString("qualityLabel", "${width}x${height}")
                     val mimeType = format.optString("mimeType", "")
                     
-                    debugLog("  - Progressive: $quality (${mimeType})")
+                    debugLog("  - Progressive: $quality (${mimeType}) [hasURL: ${url.isNotEmpty()}]")
 
-                    if (url.isNotEmpty() && height > bestHeight && mimeType.contains("video")) {
-                        bestUrl = url
-                        bestHeight = height
-                        bestQuality = quality
+                    // Progressive formats have both video AND audio in mimeType
+                    if (url.isNotEmpty() && mimeType.contains("video")) {
+                        if (height > bestHeight) {
+                            bestUrl = url
+                            bestHeight = height
+                            bestQuality = quality
+                            debugLog("    → New best: $quality")
+                        }
                     }
                 }
 
-                if (bestUrl != null) {
+                if (!bestUrl.isNullOrEmpty()) {
                     debugLog("✓ Found progressive format: $bestQuality (video+audio combined)")
                     debugLog("Progressive URL: ${bestUrl.take(100)}...")
                     return Pair(bestUrl, "Progressive $bestQuality")
+                } else {
+                    debugLog("⚠️ No valid progressive URL found")
                 }
             }
 
