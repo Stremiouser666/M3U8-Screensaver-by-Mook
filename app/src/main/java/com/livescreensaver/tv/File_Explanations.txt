@@ -1,0 +1,338 @@
+# Detailed File Explanations
+
+## 1. LiveScreensaverService.kt
+**Purpose:** Main orchestrator and Android DreamService implementation
+
+**What it does:**
+- Entry point for the Android screensaver/dream service
+- Manages the complete lifecycle (startup, running, shutdown)
+- Implements `SurfaceHolder.Callback` to handle video surface creation/destruction
+- Initializes all manager classes and coordinates their interactions
+- Handles surface setup and UI container creation
+- Manages retry logic when playback fails (exponential backoff)
+- Detects and handles playback stalls (when video freezes)
+- Responds to memory pressure events (reduces features when low on memory)
+- Schedules periodic tasks (stall checking, stats updates)
+- Handles URL refresh on startup for cached Rutube/YouTube URLs
+- Provides fallback to default stream URL if all else fails
+
+**Key responsibilities:**
+- Create SharedPreferences instances for different data types
+- Initialize all manager classes with proper dependencies
+- Set up the surface view for video playback
+- Coordinate between player, UI, and data managers
+- Handle errors and retries gracefully
+- Clean up resources on shutdown
+
+**Interacts with:**
+- All other classes (central coordinator)
+- Android system (DreamService lifecycle)
+- SharedPreferences (multiple stores)
+
+---
+
+## 2. StreamExtractor.kt
+**Purpose:** Extract actual playable URLs from YouTube and Rutube links
+
+**What it does:**
+- Determines if a URL needs extraction (YouTube/Rutube) or is direct HLS (.m3u8)
+- For YouTube: Uses NewPipe library to extract HLS stream URL
+- For Rutube: Calls Rutube API to get M3U8 playlist URL
+- Caches extracted URLs in SharedPreferences to avoid re-extraction
+- Checks network availability before attempting extraction
+- Falls back to cached URLs if network is unavailable
+- Handles API failures gracefully
+
+**Why it's needed:**
+YouTube and Rutube don't provide direct video file URLs. They use complex player systems that require extraction to get the actual stream URL that ExoPlayer can use.
+
+**Key methods:**
+- `needsExtraction()` - Checks if URL is YouTube/Rutube
+- `extractStreamUrl()` - Main extraction method with caching
+- `extractRutubeUrl()` - Rutube-specific API call
+- `getCachedUrl()` - Retrieve previously extracted URL
+
+**Caches:**
+- Original URL (user-provided)
+- Extracted URL (playable stream)
+- URL type (youtube/rutube)
+
+---
+
+## 3. DownloaderImpl.kt
+**Purpose:** HTTP client implementation for NewPipe library
+
+**What it does:**
+- Implements NewPipe's `Downloader` interface
+- Makes HTTP requests for NewPipe when extracting YouTube URLs
+- Handles HTTP responses and converts them to NewPipe format
+- Detects and reports captcha challenges (HTTP 429)
+- Configures timeout settings (30 seconds)
+
+**Why it's needed:**
+NewPipe requires a custom downloader implementation to make HTTP requests. It doesn't use Android's default networking.
+
+**Key features:**
+- OkHttp client with configurable timeouts
+- Captcha detection (throws ReCaptchaException)
+- Response conversion to NewPipe format
+
+---
+
+## 4. PlayerManager.kt
+**Purpose:** Manages ExoPlayer instance and playback logic
+
+**What it does:**
+- Creates and configures ExoPlayer instance
+- Sets up video track selector (for resolution preference)
+- Configures audio volume based on preferences
+- Handles video scaling mode (fit, fill, crop)
+- Sets playback speed if enabled
+- Manages playback state transitions
+- Handles player events (ready, error, playing/paused)
+- Implements intro delay and random seek functionality
+- Calculates random positions for live streams
+- Processes skip beginning and resume features
+- Provides callbacks to service for state changes
+
+**Key methods:**
+- `initializePlayer()` - Creates ExoPlayer with all settings
+- `playStream()` - Loads and plays a media item
+- `processPlayback()` - Handles intro/seek/resume logic
+- `calculateRandomPosition()` - Random seek calculation
+
+**Configuration:**
+- Resolution preference (auto, 720p, 1080p, etc.)
+- Audio volume and mute
+- Video scaling mode
+- Playback speed
+- Repeat mode (always loops)
+
+---
+
+## 5. UIOverlayManager.kt
+**Purpose:** Manages all UI overlays (clock and stats)
+
+**What it does:**
+- Creates and positions clock TextView
+- Creates and positions stats TextView
+- Updates clock every minute with current time
+- Updates stats display with playback information
+- Implements pixel shift animation (prevents burn-in)
+- Formats time in 12h or 24h format
+- Displays comprehensive stats (resolution, bitrate, FPS, buffer, position)
+- Shows 7-day usage statistics
+- Handles overlay positioning (top-left, top-right, bottom-left, bottom-right)
+- Manages overlay lifecycle and cleanup
+
+**Clock features:**
+- Customizable size and position
+- 12h/24h format support
+- Shadow for readability
+- Pixel shift to prevent OLED burn-in
+- Updates at minute boundaries (efficient)
+
+**Stats features:**
+- Shows 7-day usage history
+- Current resolution and bitrate
+- Frame rate (FPS)
+- Buffer percentage
+- Playback position and duration
+- Current playback state
+- Monospace font for aligned numbers
+- Semi-transparent background
+
+**Pixel shift:**
+- Random movement within 60px range
+- Prevents static UI burn-in on OLED
+- Smooth 500ms animations
+- Configurable interval
+
+---
+
+## 6. LoadingAnimationOverlay.kt
+**Purpose:** Display animated loading indicators
+
+**What it does:**
+- Creates custom loading animations
+- Provides 4 animation types: spinning dots, pulsing, progress bar, wave
+- Animates continuously until stopped
+- Customizable loading text
+- Large text (32sp) with shadow for visibility
+- Runs on main thread Handler
+
+**Animation types:**
+1. **Spinning Dots** - Unicode spinner characters (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏)
+2. **Pulsing** - Dots appear/disappear with fading effect
+3. **Progress Bar** - Bouncing progress indicator [░░█░░]
+4. **Wave** - Rising/falling block animation (▁▃▄▅▆▇)
+
+**Why it's needed:**
+Provides visual feedback during stream loading and extraction, which can take several seconds.
+
+**Key methods:**
+- `createLoadingView()` - Creates TextView with animation
+- `stop()` - Stops animation and cleans up
+
+---
+
+## 7. PreferenceManager.kt
+**Purpose:** Load and cache user preferences
+
+**What it does:**
+- Defines `PreferenceCache` data class with all settings
+- Loads all preferences from SharedPreferences once at startup
+- Converts string preferences to proper types (Int, Float, Boolean)
+- Provides default values for all settings
+- Caches preferences to avoid repeated SharedPreferences lookups
+- Provides helper methods for loading animation settings
+
+**PreferenceCache contains:**
+- Audio settings (enabled, volume)
+- Video settings (scaling mode, resolution)
+- Playback settings (speed, intro, skip beginning, random seek)
+- Schedule settings (enabled, random mode)
+- Clock settings (enabled, position, size, format, pixel shift)
+- Stats settings (enabled, position, interval)
+- Resume setting
+
+**Why it's needed:**
+SharedPreferences access is slow. Caching all preferences at startup improves performance and simplifies code throughout the app.
+
+**Benefits:**
+- Single source of truth for settings
+- Type-safe access to preferences
+- No null checks needed (defaults provided)
+- Immutable data class (thread-safe)
+
+---
+
+## 8. ScheduleManager.kt
+**Purpose:** Select which URL to play based on schedule settings
+
+**What it does:**
+- Handles daily schedule (different URL per day of week)
+- Handles random schedule mode (random URL each time)
+- Maps Calendar day-of-week to preference keys
+- Checks if URLs are disabled
+- Falls back to main URL if scheduled URL unavailable
+- Supports 7 daily URLs + 1 main URL
+
+**Schedule modes:**
+1. **Disabled** - Always use main URL
+2. **Daily** - Different URL for each day of week
+3. **Random** - Random selection from all enabled URLs
+
+**Logic flow:**
+```
+If schedule disabled → use main URL
+If schedule random → pick random from enabled URLs
+If schedule daily → use today's URL if enabled, else main URL
+If main URL disabled → use default fallback URL
+```
+
+**Why it's needed:**
+Users may want different streams on different days (e.g., news on weekdays, nature on weekends) or variety through randomization.
+
+---
+
+## 9. ResumeManager.kt
+**Purpose:** Save and restore playback position
+
+**What it does:**
+- Saves current playback position when stopping
+- Saves the URL being played
+- Saves timestamp when position was saved
+- Attempts to resume from saved position on restart
+- Validates that URL matches (using base URL comparison)
+- Respects resume timeout (5 minutes)
+- Clears saved position after successful resume
+- Only resumes if resume feature is enabled
+
+**Why it's needed:**
+If screensaver stops and restarts quickly (e.g., TV input change), user wants to continue from same position rather than random seek or start over.
+
+**Validation checks:**
+- Resume enabled in preferences
+- Saved position exists
+- Saved URL matches current URL (ignoring signature params)
+- Not timed out (< 5 minutes since stop)
+- Random seek is disabled OR within timeout
+
+**Base URL extraction:**
+Removes dynamic signature parameters (e.g., `&sign=abc123`) so URLs match even if signature changes.
+
+---
+
+## 10. UsageStatsTracker.kt
+**Purpose:** Track and display playback usage statistics
+
+**What it does:**
+- Records playback time in minutes per day
+- Stores data in SharedPreferences by date
+- Generates 7-day usage report
+- Formats dates (M/d format)
+- Calculates totals (hours and minutes)
+- Updates stats every interval (default 1 second = 1 "minute" tracked)
+
+**Storage format:**
+- Key: `usage_2025-01-19`
+- Value: minutes played that day
+
+**Display format:**
+```
+--- 7 DAY USAGE ---
+1/19: 2h 35m
+1/18: 1h 20m
+1/17: 45m
+...
+--- TOTAL: 8h 15m ---
+```
+
+**Why it's needed:**
+Users want to know how much they use the screensaver, especially on devices that might have burn-in concerns or to monitor usage patterns.
+
+---
+
+## How They Work Together
+
+### Startup Flow:
+1. **LiveScreensaverService** starts
+2. **PreferenceManager** loads all settings into cache
+3. **ScheduleManager** determines which URL to use
+4. **StreamExtractor** checks if extraction needed
+5. **PlayerManager** creates ExoPlayer
+6. **UIOverlayManager** sets up clock/stats overlays
+7. **LoadingAnimationOverlay** shows loading indicator
+
+### Playback Flow:
+1. **StreamExtractor** extracts playable URL
+2. **PlayerManager** loads and starts playback
+3. **ResumeManager** checks for saved position
+4. **PlayerManager** seeks to position (intro/skip/resume/random)
+5. **UIOverlayManager** updates stats periodically
+6. **UsageStatsTracker** records playback time
+
+### Shutdown Flow:
+1. **ResumeManager** saves current position
+2. **PlayerManager** releases ExoPlayer
+3. **UIOverlayManager** removes overlays and stops animations
+4. **LiveScreensaverService** cleans up handlers and coroutines
+
+### Error Flow:
+1. **PlayerManager** detects error
+2. **LiveScreensaverService** handles retry logic
+3. **StreamExtractor** attempts URL refresh
+4. **PlayerManager** retries playback with exponential backoff
+5. Falls back to default URL after max retries
+
+---
+
+## Benefits of This Structure
+
+1. **Separation of Concerns** - Each class has one clear purpose
+2. **Testability** - Each class can be unit tested independently
+3. **Maintainability** - Changes are localized to relevant classes
+4. **Reusability** - Managers can be reused in other contexts
+5. **Readability** - Smaller files are easier to understand
+6. **Debugging** - Easier to trace issues to specific components
