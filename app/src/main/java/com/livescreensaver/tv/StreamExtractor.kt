@@ -71,25 +71,40 @@ class StreamExtractor(
             Log.d(TAG, "🎬 Extracting YouTube URL...")
             
             // Try standalone extractor first
-            val standaloneResult = standaloneExtractor.extractStream(sourceUrl)
-            if (standaloneResult.success && standaloneResult.streamUrl != null) {
-                Log.d(TAG, "✅ Standalone extractor succeeded")
-                saveToCache(sourceUrl, standaloneResult.streamUrl, "youtube")
-                return@withContext standaloneResult.streamUrl
+            try {
+                val standaloneResult = standaloneExtractor.extractStream(sourceUrl)
+                if (standaloneResult.success && standaloneResult.streamUrl != null) {
+                    Log.d(TAG, "✅ Standalone extractor succeeded: ${standaloneResult.quality}")
+                    saveToCache(sourceUrl, standaloneResult.streamUrl, "youtube")
+                    return@withContext standaloneResult.streamUrl
+                } else {
+                    Log.w(TAG, "⚠️ Standalone extractor failed: ${standaloneResult.errorMessage}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Standalone extractor exception", e)
             }
             
             // Fallback to NewPipe
-            Log.d(TAG, "🔄 Standalone failed, trying NewPipe...")
-            NewPipe.init(DownloaderImpl())
-            val info = StreamInfo.getInfo(sourceUrl)
-            val extractedUrl = info.hlsUrl
-            
-            if (extractedUrl != null) {
-                Log.d(TAG, "✅ NewPipe extraction succeeded")
-                saveToCache(sourceUrl, extractedUrl, "youtube")
+            try {
+                Log.d(TAG, "🔄 Trying NewPipe as fallback...")
+                NewPipe.init(DownloaderImpl())
+                val info = StreamInfo.getInfo(sourceUrl)
+                val extractedUrl = info.hlsUrl
+                
+                if (extractedUrl != null) {
+                    Log.d(TAG, "✅ NewPipe extraction succeeded")
+                    saveToCache(sourceUrl, extractedUrl, "youtube")
+                    return@withContext extractedUrl
+                } else {
+                    Log.e(TAG, "❌ NewPipe returned null HLS URL")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ NewPipe extraction exception", e)
             }
             
-            extractedUrl
+            // Both methods failed
+            Log.e(TAG, "❌ All YouTube extraction methods failed")
+            null
         } catch (e: Exception) {
             Log.e(TAG, "Extraction failed: ${e.message}", e)
             null
