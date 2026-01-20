@@ -147,12 +147,13 @@ class UIOverlayManager(
         }
     }
 
-    fun updateStats(player: ExoPlayer?, usageStats: String) {
+    fun updateStats(player: ExoPlayer?, usageStats: String, bandwidthStats: String) {
         player?.let { p ->
             statsBuilder.clear()
             statsBuilder.setLength(0)
             
             statsBuilder.append(usageStats).append("\n\n")
+            statsBuilder.append(bandwidthStats).append("\n\n")
             
             p.videoFormat?.let { format ->
                 statsBuilder.append("Resolution: ")
