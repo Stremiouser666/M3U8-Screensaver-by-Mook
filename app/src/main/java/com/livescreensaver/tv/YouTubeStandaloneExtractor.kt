@@ -46,9 +46,9 @@ class YouTubeStandaloneExtractor(
         try {
             debugLog("==== YouTube Extraction Started ====")
             debugLog("Input URL: $youtubeUrl")
-            
+
             val videoId = extractVideoId(youtubeUrl)
-            
+
             if (videoId == null) {
                 debugLog("❌ Failed to extract video ID from URL")
                 return@withContext ExtractionResult(
@@ -56,30 +56,11 @@ class YouTubeStandaloneExtractor(
                     errorMessage = "Could not extract video ID from YouTube URL"
                 )
             }
-            
+
             debugLog("✓ Extracted video ID: $videoId")
-            
-            debugLog(">>> Attempting Method 1: Android InnerTube API")
-            val androidResult = tryInnerTubeExtraction(
-                videoId,
-                clientName = "ANDROID",
-                clientVersion = "19.09.37",
-                apiKey = ANDROID_API_KEY,
-                androidSdkVersion = 33
-            )
-            
-            if (androidResult != null) {
-                debugLog("✅ SUCCESS via Android InnerTube!")
-                return@withContext ExtractionResult(
-                    success = true,
-                    streamUrl = androidResult,
-                    quality = "Adaptive (InnerTube)",
-                    hasAudio = true
-                )
-            }
-            
-            debugLog("⚠️ Android InnerTube failed, trying Web InnerTube...")
-            
+
+            // Try WEB client FIRST (better quality options including DASH/HLS)
+            debugLog(">>> Attempting Method 1: Web InnerTube API")
             val webResult = tryInnerTubeExtraction(
                 videoId,
                 clientName = "WEB",
@@ -87,25 +68,48 @@ class YouTubeStandaloneExtractor(
                 apiKey = WEB_API_KEY,
                 androidSdkVersion = null
             )
-            
+
             if (webResult != null) {
                 debugLog("✅ SUCCESS via Web InnerTube!")
                 return@withContext ExtractionResult(
                     success = true,
-                    streamUrl = webResult,
-                    quality = "Adaptive (InnerTube)",
+                    streamUrl = webResult.first,
+                    quality = webResult.second,
                     hasAudio = true
                 )
             }
-            
+
+            debugLog("⚠️ Web InnerTube failed, trying Android InnerTube...")
+
+            // Fallback to Android client
+            debugLog(">>> Attempting Method 2: Android InnerTube API (fallback)")
+            val androidResult = tryInnerTubeExtraction(
+                videoId,
+                clientName = "ANDROID",
+                clientVersion = "19.09.37",
+                apiKey = ANDROID_API_KEY,
+                androidSdkVersion = 33
+            )
+
+            if (androidResult != null) {
+                debugLog("✅ SUCCESS via Android InnerTube!")
+                return@withContext ExtractionResult(
+                    success = true,
+                    streamUrl = androidResult.first,
+                    quality = androidResult.second,
+                    hasAudio = true
+                )
+            }
+
             debugLog("❌ All extraction methods failed")
             ExtractionResult(
                 success = false,
                 errorMessage = "All InnerTube methods failed. Video may be age-restricted or geo-blocked."
             )
-            
+
         } catch (e: Exception) {
             debugLog("❌ Exception: ${e.message}")
+            debugLog("Stack trace: ${e.stackTraceToString()}")
             Log.e(TAG, "YouTube extraction error", e)
             ExtractionResult(
                 success = false,
@@ -120,165 +124,195 @@ class YouTubeStandaloneExtractor(
         clientVersion: String,
         apiKey: String,
         androidSdkVersion: Int?
-    ): String? = withContext(Dispatchers.IO) {
+    ): Pair<String, String>? = withContext(Dispatchers.IO) {
         try {
             debugLog("Building $clientName client request...")
-            
+
             val clientContext = JSONObject().apply {
                 put("clientName", clientName)
                 put("clientVersion", clientVersion)
                 put("hl", "en")
                 put("gl", "US")
                 put("utcOffsetMinutes", 0)
-                
+
                 if (androidSdkVersion != null) {
                     put("androidSdkVersion", androidSdkVersion)
                 }
             }
-            
+
             val contextJson = JSONObject().apply {
                 put("client", clientContext)
             }
-            
+
             val requestBody = JSONObject().apply {
                 put("videoId", videoId)
                 put("context", contextJson)
                 put("contentCheckOk", true)
                 put("racyCheckOk", true)
             }
-            
+
             val userAgent = if (clientName == "ANDROID") {
                 "com.google.android.youtube/$clientVersion (Linux; U; Android 13) gzip"
             } else {
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
             }
-            
-            val request = Request.Builder()
+
+            val requestBuilder = Request.Builder()
                 .url("$PLAYER_ENDPOINT?key=$apiKey")
                 .post(requestBody.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull()))
                 .addHeader("Content-Type", "application/json")
                 .addHeader("User-Agent", userAgent)
                 .addHeader("X-YouTube-Client-Name", if (clientName == "ANDROID") "3" else "1")
                 .addHeader("X-YouTube-Client-Version", clientVersion)
-                .build()
-            
-            debugLog("Sending API request...")
+
+            // Add additional headers for Web client
+            if (clientName == "WEB") {
+                requestBuilder
+                    .addHeader("Origin", "https://www.youtube.com")
+                    .addHeader("Referer", "https://www.youtube.com/watch?v=$videoId")
+            }
+
+            val request = requestBuilder.build()
+
+            debugLog("Sending $clientName API request...")
             val response = httpClient.newCall(request).execute()
             debugLog("Response code: ${response.code}")
-            
+
             if (!response.isSuccessful) {
                 debugLog("❌ API request failed with HTTP ${response.code}")
                 return@withContext null
             }
-            
+
             val json = response.body?.string()
             if (json.isNullOrEmpty()) {
                 debugLog("❌ Empty response body")
                 return@withContext null
             }
-            
+
             val jsonObject = JSONObject(json)
-            
+
+            // Check playability status
             if (jsonObject.has("playabilityStatus")) {
                 val playability = jsonObject.getJSONObject("playabilityStatus")
                 val status = playability.optString("status", "UNKNOWN")
                 val reason = playability.optString("reason", "No reason provided")
-                
+
                 debugLog("Playability status: $status")
                 if (status != "OK") {
                     debugLog("Reason: $reason")
                     return@withContext null
                 }
             }
-            
+
+            // Parse streaming data
             parseStreamingData(jsonObject)
-            
+
         } catch (e: Exception) {
             debugLog("❌ $clientName exception: ${e.message}")
             null
         }
     }
 
-    private fun parseStreamingData(jsonObject: JSONObject): String? {
+    private fun parseStreamingData(jsonObject: JSONObject): Pair<String, String>? {
         try {
             if (!jsonObject.has("streamingData")) {
                 debugLog("⚠️ No streamingData in response")
                 return null
             }
-            
+
             val streamingData = jsonObject.getJSONObject("streamingData")
-            
-            // Priority 1: HLS manifest (best for adaptive streaming, up to 4K)
-            val hlsUrl = streamingData.optString("hlsManifestUrl")
-            if (hlsUrl.isNotEmpty()) {
-                debugLog("✓ Found HLS manifest URL (adaptive, best quality)")
-                return hlsUrl
-            }
-            
-            // Priority 2: DASH manifest (adaptive, ExoPlayer merges video+audio automatically)
+            debugLog("--- Analyzing streaming data ---")
+
+            // Priority 1: DASH manifest (adaptive streaming, up to 4K)
             val dashUrl = streamingData.optString("dashManifestUrl")
             if (dashUrl.isNotEmpty()) {
                 debugLog("✓ Found DASH manifest URL (adaptive, up to 4K)")
-                return dashUrl
+                debugLog("DASH URL: ${dashUrl.take(100)}...")
+                return Pair(dashUrl, "DASH manifest")
             }
-            
-            // Priority 3: Progressive formats (video+audio combined, usually 360p-720p)
+
+            // Priority 2: HLS manifest (adaptive streaming, good for live)
+            val hlsUrl = streamingData.optString("hlsManifestUrl")
+            if (hlsUrl.isNotEmpty()) {
+                debugLog("✓ Found HLS manifest URL (adaptive)")
+                debugLog("HLS URL: ${hlsUrl.take(100)}...")
+                return Pair(hlsUrl, "HLS manifest")
+            }
+
+            // Priority 3: Adaptive formats (video-only, highest quality)
+            val adaptiveFormats = streamingData.optJSONArray("adaptiveFormats")
+            if (adaptiveFormats != null && adaptiveFormats.length() > 0) {
+                debugLog("Checking ${adaptiveFormats.length()} adaptive formats...")
+                
+                var bestVideoUrl: String? = null
+                var bestHeight = 0
+                var bestQuality = ""
+
+                for (i in 0 until adaptiveFormats.length()) {
+                    val format = adaptiveFormats.getJSONObject(i)
+                    val mimeType = format.optString("mimeType", "")
+                    
+                    if (mimeType.startsWith("video/")) {
+                        val url = format.optString("url")
+                        val height = format.optInt("height", 0)
+                        val width = format.optInt("width", 0)
+                        val quality = format.optString("qualityLabel", "${width}x${height}")
+                        val bitrate = format.optInt("bitrate", 0)
+                        
+                        debugLog("  - Adaptive video: $quality @ ${bitrate/1000}kbps (${mimeType})")
+                        
+                        if (url.isNotEmpty() && height > bestHeight) {
+                            bestVideoUrl = url
+                            bestHeight = height
+                            bestQuality = quality
+                        }
+                    }
+                }
+
+                if (bestVideoUrl != null) {
+                    debugLog("✓ Selected best adaptive format: $bestQuality")
+                    debugLog("⚠️ Note: This is video-only, may need DASH manifest for audio")
+                    debugLog("Adaptive URL: ${bestVideoUrl.take(100)}...")
+                    return Pair(bestVideoUrl, "Adaptive $bestQuality (video-only)")
+                }
+            }
+
+            // Priority 4: Progressive formats (combined video+audio, typically max 720p)
             val formats = streamingData.optJSONArray("formats")
             if (formats != null && formats.length() > 0) {
                 debugLog("Checking ${formats.length()} progressive formats...")
+                
                 var bestUrl: String? = null
                 var bestHeight = 0
-                
+                var bestQuality = ""
+
                 for (i in 0 until formats.length()) {
                     val format = formats.getJSONObject(i)
                     val url = format.optString("url")
                     val height = format.optInt("height", 0)
+                    val width = format.optInt("width", 0)
+                    val quality = format.optString("qualityLabel", "${width}x${height}")
                     val mimeType = format.optString("mimeType", "")
                     
+                    debugLog("  - Progressive: $quality (${mimeType})")
+
                     if (url.isNotEmpty() && height > bestHeight && mimeType.contains("video")) {
                         bestUrl = url
                         bestHeight = height
+                        bestQuality = quality
                     }
                 }
-                
+
                 if (bestUrl != null) {
-                    debugLog("✓ Found progressive format: ${bestHeight}p (video+audio combined)")
-                    return bestUrl
+                    debugLog("✓ Found progressive format: $bestQuality (video+audio combined)")
+                    debugLog("Progressive URL: ${bestUrl.take(100)}...")
+                    return Pair(bestUrl, "Progressive $bestQuality")
                 }
             }
-            
-            // Priority 4: Adaptive formats (video-only, higher quality but needs audio merge)
-            // ExoPlayer can handle DASH which includes separate streams
-            val adaptiveFormats = streamingData.optJSONArray("adaptiveFormats")
-            if (adaptiveFormats != null && adaptiveFormats.length() > 0) {
-                debugLog("⚠️ Only adaptive formats available (video-only)")
-                debugLog("Note: ExoPlayer may not play video-only URLs without DASH manifest")
-                
-                // Find highest quality video format
-                var bestVideoUrl: String? = null
-                var bestHeight = 0
-                
-                for (i in 0 until adaptiveFormats.length()) {
-                    val format = adaptiveFormats.getJSONObject(i)
-                    val url = format.optString("url")
-                    val height = format.optInt("height", 0)
-                    val mimeType = format.optString("mimeType", "")
-                    
-                    if (url.isNotEmpty() && mimeType.contains("video") && height > bestHeight) {
-                        bestVideoUrl = url
-                        bestHeight = height
-                    }
-                }
-                
-                if (bestVideoUrl != null) {
-                    debugLog("⚠️ Using video-only URL: ${bestHeight}p (NO AUDIO)")
-                    return bestVideoUrl
-                }
-            }
-            
-            debugLog("❌ No usable stream URL found")
+
+            debugLog("❌ No playable formats found in response")
             return null
-            
+
         } catch (e: Exception) {
             debugLog("❌ Error parsing streamingData: ${e.message}")
             return null
@@ -309,7 +343,7 @@ class YouTubeStandaloneExtractor(
     private fun debugLog(message: String) {
         Log.d(TAG, message)
         FileLogger.log(message, TAG)
-        
+
         try {
             val file = File(context.getExternalFilesDir(null), "youtube_extraction_log.txt")
             val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(Date())
