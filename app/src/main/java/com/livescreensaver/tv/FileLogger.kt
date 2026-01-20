@@ -1,7 +1,6 @@
 package com.livescreensaver.tv
 
 import android.content.Context
-import android.os.Environment
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
@@ -10,7 +9,7 @@ import java.util.*
 
 object FileLogger {
     private const val TAG = "FileLogger"
-    private const val LOG_FILENAME = "LiveScreensaver_Debug.txt"
+    private const val LOG_FILENAME = "debug_log.txt"
     private const val MAX_LOG_SIZE = 5 * 1024 * 1024 // 5MB
     
     private var isEnabled = false
@@ -18,8 +17,9 @@ object FileLogger {
     
     fun enable(context: Context) {
         try {
-            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            logFile = File(downloadsDir, LOG_FILENAME)
+            // Use external files dir - accessible via file manager without special permissions
+            val externalFilesDir = context.getExternalFilesDir(null)
+            logFile = File(externalFilesDir, LOG_FILENAME)
             
             // Check if file is too large, truncate if needed
             if (logFile?.exists() == true && (logFile?.length() ?: 0) > MAX_LOG_SIZE) {
@@ -29,6 +29,7 @@ object FileLogger {
             isEnabled = true
             log("📝 File logging enabled")
             log("📂 Log file: ${logFile?.absolutePath}")
+            log("📂 Accessible via: Android/data/com.livescreensaver.tv/files/debug_log.txt")
             log("⏰ Started: ${getCurrentTimestamp()}")
             log("─".repeat(60))
         } catch (e: Exception) {
@@ -37,6 +38,7 @@ object FileLogger {
     }
     
     fun disable() {
+        if (!isEnabled) return
         log("─".repeat(60))
         log("⏰ Stopped: ${getCurrentTimestamp()}")
         log("📝 File logging disabled")
@@ -77,6 +79,10 @@ object FileLogger {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to clear log file", e)
         }
+    }
+    
+    fun getLogPath(): String? {
+        return logFile?.absolutePath
     }
     
     private fun getCurrentTimestamp(): String {
