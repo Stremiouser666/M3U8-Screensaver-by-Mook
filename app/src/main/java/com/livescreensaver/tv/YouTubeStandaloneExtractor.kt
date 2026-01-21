@@ -555,11 +555,12 @@ class YouTubeStandaloneExtractor(
             debugLog("✓ Selected video: ${bestVideo.width}x${bestVideo.height} (${bestVideo.codecs})")
             debugLog("✓ Selected audio: ${bestAudio.codecs} @ ${bestAudio.bitrate/1000}kbps")
 
-            // TEMPORARY FIX: Return video URL directly instead of building DASH manifest
-            // ExoPlayer should handle video-only URL, or we return just video for now
-            debugLog("⚠️ Returning video URL directly (DASH manifest has playback issues)")
-            debugLog("Video URL: ${bestVideo.url.take(150)}...")
-            return Pair(bestVideo.url, "Direct 1080p video (${bestVideo.width}x${bestVideo.height})")
+            // Return both URLs separated by ||| for PlayerManager to merge
+            val dualStreamUrl = "${bestVideo.url}|||${bestAudio.url}"
+            debugLog("✅ Returning dual-stream URL for merging")
+            debugLog("📹 Video: ${bestVideo.url.take(150)}...")
+            debugLog("🔊 Audio: ${bestAudio.url.take(150)}...")
+            return Pair(dualStreamUrl, "1080p with audio (${bestVideo.width}x${bestVideo.height})")
 
             // Original DASH manifest code (disabled for now due to playback issues)
             /*
