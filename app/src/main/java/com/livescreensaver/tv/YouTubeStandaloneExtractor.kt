@@ -555,6 +555,14 @@ class YouTubeStandaloneExtractor(
             debugLog("✓ Selected video: ${bestVideo.width}x${bestVideo.height} (${bestVideo.codecs})")
             debugLog("✓ Selected audio: ${bestAudio.codecs} @ ${bestAudio.bitrate/1000}kbps")
 
+            // TEMPORARY FIX: Return video URL directly instead of building DASH manifest
+            // ExoPlayer should handle video-only URL, or we return just video for now
+            debugLog("⚠️ Returning video URL directly (DASH manifest has playback issues)")
+            debugLog("Video URL: ${bestVideo.url.take(150)}...")
+            return Pair(bestVideo.url, "Direct 1080p video (${bestVideo.width}x${bestVideo.height})")
+
+            // Original DASH manifest code (disabled for now due to playback issues)
+            /*
             // Create DASH manifest
             val dashManifest = createDashManifestXml(bestVideo, bestAudio)
             
@@ -567,6 +575,7 @@ class YouTubeStandaloneExtractor(
             
             // Return file:// URI for ExoPlayer
             return Pair("file://${manifestFile.absolutePath}", "Custom DASH ${bestVideo.width}x${bestVideo.height}")
+            */
             
         } catch (e: Exception) {
             debugLog("❌ Error building DASH manifest: ${e.message}")
