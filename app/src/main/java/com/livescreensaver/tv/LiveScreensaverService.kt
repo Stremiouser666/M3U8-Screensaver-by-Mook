@@ -299,7 +299,7 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
             val resumedPosition = resumeManager.attemptResume(cache, currentSourceUrl, duration, skipDuration)
 
             // Apply skip/resume logic
-            if (resumedPosition > 0) {
+            if (resumedPosition != null && resumedPosition > 0) {
                 player.seekTo(resumedPosition)
             }
             
