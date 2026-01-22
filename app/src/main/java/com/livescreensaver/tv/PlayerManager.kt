@@ -14,9 +14,7 @@ class PlayerManager(
     private val context: Context,
     private val eventListener: PlayerEventListener
 ) {
-    private var videoPlayer: ExoPlayer? = null
-    private var audioPlayer: ExoPlayer? = null
-    private var isSyncing = false
+    private var exoPlayer: ExoPlayer? = null
 
     interface PlayerEventListener {
         fun onPlaybackStateChanged(state: Int)
@@ -26,24 +24,23 @@ class PlayerManager(
     fun initialize(surface: Surface) {
         release()
 
-        // Configure load control for instant startup
+        // AGGRESSIVE buffering for merged streams - prioritize START SPEED
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                5000,   // min buffer before playback starts (5s)
-                30000,  // max buffer (30s)
-                500,    // buffer for playback to start (0.5s) - INSTANT START
-                2000    // buffer for playback to resume (2s)
+                2000,   // min buffer (2s) - very low
+                15000,  // max buffer (15s) - reasonable
+                500,    // START PLAYBACK at 500ms! (was 1500ms)
+                1000    // rebuffer threshold (1s)
             )
             .setPrioritizeTimeOverSizeThresholds(true)
+            .setTargetBufferBytes(-1)  // No size limit, focus on time
             .build()
 
-        // Video player (with surface)
-        videoPlayer = ExoPlayer.Builder(context)
+        exoPlayer = ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
             .build()
             .apply {
                 setVideoSurface(surface)
-                volume = 0f  // Video player is muted
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         eventListener.onPlaybackStateChanged(playbackState)
@@ -54,32 +51,17 @@ class PlayerManager(
                     }
                 })
             }
-
-        // Audio player (no surface, audio only)
-        audioPlayer = ExoPlayer.Builder(context)
-            .setLoadControl(loadControl)
-            .build()
-            .apply {
-                volume = 1f  // Ensure audio is enabled
-                addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        FileLogger.log("🔊 Audio state: $playbackState", "PlayerManager")
-                    }
-
-                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                        FileLogger.log("❌ Audio error: ${error.message}", "PlayerManager")
-                    }
-                })
-            }
     }
 
     /**
      * Play a stream URL
      * Supports:
      * - Regular URLs (HLS, DASH, MP4)
-     * - Dual URLs in format: "video_url|||audio_url" for parallel playback
+     * - Dual URLs in format: "video_url|||audio_url" for merging
      */
     fun playStream(url: String) {
+        val player = exoPlayer ?: return
+
         try {
             // Check if this is a dual-stream URL (video|||audio)
             if (url.contains("|||")) {
@@ -88,24 +70,18 @@ class PlayerManager(
                     val videoUrl = parts[0]
                     val audioUrl = parts[1]
 
-                    FileLogger.log("🎬 Loading dual-stream PARALLEL (video + audio)", "PlayerManager")
-                    FileLogger.log("📹 Video: ${videoUrl.take(100)}...", "PlayerManager")
-                    FileLogger.log("🔊 Audio: ${audioUrl.take(100)}...", "PlayerManager")
-
-                    playDualStreamParallel(videoUrl, audioUrl)
+                    FileLogger.log("🎬 Merging video + audio streams", "PlayerManager")
+                    playMergedStream(videoUrl, audioUrl)
                     return
                 }
             }
 
-            // Single URL - play on video player only
+            // Single URL - play normally
             FileLogger.log("🎬 Loading single stream: ${url.take(100)}...", "PlayerManager")
             val mediaItem = MediaItem.fromUri(url)
-            videoPlayer?.apply {
-                volume = 1f  // Enable audio for single stream
-                setMediaItem(mediaItem)
-                prepare()
-                play()
-            }
+            player.setMediaItem(mediaItem)
+            player.prepare()
+            player.play()
 
         } catch (e: Exception) {
             FileLogger.log("❌ Error loading stream: ${e.message}", "PlayerManager")
@@ -114,79 +90,65 @@ class PlayerManager(
     }
 
     /**
-     * Play video and audio streams in parallel (no merging)
-     * Video player shows video (muted), audio player plays audio
+     * Merge video and audio using MergingMediaSource
+     * With AGGRESSIVE buffering settings, should start in 2-5 seconds
      */
-    private fun playDualStreamParallel(videoUrl: String, audioUrl: String) {
+    private fun playMergedStream(videoUrl: String, audioUrl: String) {
+        val player = exoPlayer ?: return
+
         try {
-            val videoItem = MediaItem.fromUri(videoUrl)
-            val audioItem = MediaItem.fromUri(audioUrl)
+            val dataSourceFactory = DefaultHttpDataSource.Factory()
+                .setConnectTimeoutMs(5000)
+                .setReadTimeoutMs(5000)
 
-            // Prepare both players
-            videoPlayer?.apply {
-                volume = 0f  // Mute video
-                setMediaItem(videoItem)
-                prepare()
-            }
+            val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(MediaItem.fromUri(videoUrl))
 
-            audioPlayer?.apply {
-                volume = 1f  // Full audio volume
-                setMediaItem(audioItem)
-                prepare()
-            }
+            val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(MediaItem.fromUri(audioUrl))
 
-            FileLogger.log("✅ Both players prepared", "PlayerManager")
+            val merged = MergingMediaSource(videoSource, audioSource)
 
-            // Start video first, then audio (helps with sync)
-            videoPlayer?.play()
-            
-            // Small delay to help sync (optional, can remove if not needed)
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                audioPlayer?.play()
-                FileLogger.log("✅ Audio started", "PlayerManager")
-            }, 50)
+            FileLogger.log("✅ Merged source created (buffering ~2-5s)", "PlayerManager")
 
-            FileLogger.log("✅ Starting parallel playback", "PlayerManager")
+            player.setMediaSource(merged)
+            player.prepare()
+            player.play()
 
         } catch (e: Exception) {
-            FileLogger.log("❌ Error in parallel playback: ${e.message}", "PlayerManager")
+            FileLogger.log("❌ Error merging: ${e.message}", "PlayerManager")
             eventListener.onPlayerError(e)
         }
     }
 
     fun pause() {
-        videoPlayer?.pause()
-        audioPlayer?.pause()
+        exoPlayer?.pause()
     }
 
     fun resume() {
-        videoPlayer?.play()
-        audioPlayer?.play()
+        exoPlayer?.play()
     }
 
     fun seekTo(positionMs: Long) {
-        videoPlayer?.seekTo(positionMs)
-        audioPlayer?.seekTo(positionMs)
+        exoPlayer?.seekTo(positionMs)
     }
 
     fun getCurrentPosition(): Long {
-        return videoPlayer?.currentPosition ?: 0
+        return exoPlayer?.currentPosition ?: 0
     }
 
     fun getDuration(): Long {
-        return videoPlayer?.duration ?: 0
+        return exoPlayer?.duration ?: 0
     }
 
     fun release() {
-        videoPlayer?.release()
-        audioPlayer?.release()
-        videoPlayer = null
-        audioPlayer = null
+        exoPlayer?.release()
+        exoPlayer = null
     }
 
     fun setVolume(volume: Float) {
-        audioPlayer?.volume = volume
+        exoPlayer?.volume = volume
     }
 
-    fun getPlayer(): ExoPlayer? = videoPlayer
+    fun getPlayer(): ExoPlayer? = exoPlayer
 }
