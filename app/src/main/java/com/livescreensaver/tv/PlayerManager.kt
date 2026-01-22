@@ -59,6 +59,18 @@ class PlayerManager(
         audioPlayer = ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
             .build()
+            .apply {
+                volume = 1f  // Ensure audio is enabled
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        FileLogger.log("🔊 Audio state: $playbackState", "PlayerManager")
+                    }
+
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        FileLogger.log("❌ Audio error: ${error.message}", "PlayerManager")
+                    }
+                })
+            }
     }
 
     /**
