@@ -24,13 +24,13 @@ class PlayerManager(
     fun initialize(surface: Surface) {
         release()
 
-        // AGGRESSIVE buffering for merged streams - prioritize START SPEED
+        // BALANCED buffering - build proper buffer before starting
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                2000,   // min buffer (2s) - very low
-                15000,  // max buffer (15s) - reasonable
-                500,    // START PLAYBACK at 500ms! (was 1500ms)
-                1000    // rebuffer threshold (1s)
+                5000,   // min buffer (5s) - build buffer first
+                20000,  // max buffer (20s) - longer for stability
+                500,    // START PLAYBACK at 500ms
+                2000    // rebuffer threshold (2s)
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .setTargetBufferBytes(-1)  // No size limit, focus on time
@@ -91,7 +91,7 @@ class PlayerManager(
 
     /**
      * Merge video and audio using MergingMediaSource
-     * With AGGRESSIVE buffering settings, should start in 2-5 seconds
+     * With balanced buffering, should build 5s buffer before starting
      */
     private fun playMergedStream(videoUrl: String, audioUrl: String) {
         val player = exoPlayer ?: return
@@ -109,7 +109,7 @@ class PlayerManager(
 
             val merged = MergingMediaSource(videoSource, audioSource)
 
-            FileLogger.log("✅ Merged source created (buffering ~2-5s)", "PlayerManager")
+            FileLogger.log("✅ Merged source created (buffering ~5s before start)", "PlayerManager")
 
             player.setMediaSource(merged)
             player.prepare()
