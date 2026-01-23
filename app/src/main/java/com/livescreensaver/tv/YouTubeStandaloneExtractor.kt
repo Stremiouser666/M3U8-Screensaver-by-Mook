@@ -19,6 +19,20 @@ class YouTubeStandaloneExtractor(
     private val context: Context,
     httpClient: OkHttpClient? = null
 ) {
+    
+    companion object {
+        const val MODE_360_PROGRESSIVE = "360_progressive"
+        const val MODE_480_VIDEO_ONLY = "480_video_only"
+        const val MODE_720_VIDEO_ONLY = "720_video_only"
+        const val MODE_1080_VIDEO_ONLY = "1080_video_only"
+        const val MODE_1440_VIDEO_ONLY = "1440_video_only"
+        const val MODE_2160_VIDEO_ONLY = "2160_video_only"
+    }
+    
+    private fun getQualityMode(): String {
+        val prefs = context.getSharedPreferences("com.livescreensaver.tv_preferences", Context.MODE_PRIVATE)
+        return prefs.getString("youtube_quality_mode", MODE_360_PROGRESSIVE) ?: MODE_360_PROGRESSIVE
+    }
     companion object {
         private const val TAG = "YouTubeExtractor"
         private const val ANDROID_API_KEY = "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w"
@@ -440,20 +454,32 @@ class YouTubeStandaloneExtractor(
 
     private fun buildCustomDashManifest(streamingData: JSONObject): Pair<String, String>? {
         try {
+            val qualityMode = getQualityMode()
             val adaptiveFormats = streamingData.optJSONArray("adaptiveFormats") ?: return null
 
             debugLog("Building custom DASH manifest from ${adaptiveFormats.length()} adaptive formats...")
+            debugLog("Quality mode: $qualityMode")
+
+            // If 360p progressive mode, try progressive formats first
+            if (qualityMode == MODE_360_PROGRESSIVE) {
+                return tryProgressiveFormat(streamingData)
+            }
+
+            // For video-only modes, extract only video
+            val targetHeight = when (qualityMode) {
+                MODE_480_VIDEO_ONLY -> 480
+                MODE_720_VIDEO_ONLY -> 720
+                MODE_1080_VIDEO_ONLY -> 1080
+                MODE_1440_VIDEO_ONLY -> 1440
+                MODE_2160_VIDEO_ONLY -> 2160
+                else -> 720 // fallback
+            }
 
             // Extract video ID for signature decryption
             val videoId = extractVideoId(streamingData.toString()) ?: ""
 
-            // Find best video format (prefer H.264/AVC for compatibility, then VP9)
+            // Find best video format matching target height
             var bestVideo: VideoFormat? = null
-            var bestVideoHeight = 0
-
-            // Find best audio format (prefer AAC/M4A for compatibility, then Opus)
-            var bestAudio: AudioFormat? = null
-            var bestAudioBitrate = 0
 
             for (i in 0 until adaptiveFormats.length()) {
                 val format = adaptiveFormats.getJSONObject(i)
@@ -482,106 +508,92 @@ class YouTubeStandaloneExtractor(
                 }
 
                 val mimeType = format.optString("mimeType", "")
-                if (mimeType.isEmpty()) {
-                    debugLog("  - Format $i has no mimeType")
+                if (mimeType.isEmpty() || !mimeType.startsWith("video/")) {
                     continue
                 }
 
                 val bitrate = format.optInt("bitrate", 0)
-
-                // Parse codecs from mimeType (e.g., "video/mp4; codecs=\"avc1.640028\"")
                 val codecs = extractCodecs(mimeType)
+                val height = format.optInt("height", 0)
+                val width = format.optInt("width", 0)
+                val fps = format.optInt("fps", 30)
 
-                if (mimeType.startsWith("video/")) {
-                    val height = format.optInt("height", 0)
-                    val width = format.optInt("width", 0)
-                    val fps = format.optInt("fps", 30)
+                if (height == 0 || width == 0) {
+                    debugLog("  - Video format has invalid dimensions: ${width}x${height}")
+                    continue
+                }
 
-                    if (height == 0 || width == 0) {
-                        debugLog("  - Video format has invalid dimensions: ${width}x${height}")
-                        continue
-                    }
+                val isH264 = codecs.contains("avc1")
 
-                    // Prefer H.264 (avc1) over VP9 for better compatibility
-                    val isH264 = codecs.contains("avc1")
+                // Select video matching target height, prefer H.264
+                val shouldSelect = when {
+                    height == targetHeight && isH264 -> true
+                    height == targetHeight && bestVideo == null -> true
+                    bestVideo == null && height < targetHeight && isH264 -> true
+                    else -> false
+                }
 
-                    // Select 720p specifically for optimal buffering
-                    val shouldSelect = when {
-                        height == 720 && isH264 -> true  // Always prefer 720p H.264
-                        height == 720 -> true  // Accept 720p even if VP9
-                        bestVideo == null && height <= 1280 && isH264 -> true  // Fallback: any H.264 up to 720p
-                        bestVideo != null && bestVideo.height != 720 && height < bestVideo.height && isH264 -> true  // Take lower res if 720p not found
-                        else -> false
-                    }
-
-                    if (shouldSelect) {
-                        bestVideo = VideoFormat(url, width, height, bitrate, mimeType, codecs, fps)
-                        bestVideoHeight = height
-                        debugLog("  ✓ Video candidate: ${width}x${height} ($codecs) @ ${bitrate/1000}kbps")
-                    }
-
-                } else if (mimeType.startsWith("audio/")) {
-                    val sampleRate = format.optInt("audioSampleRate", 44100)
-
-                    // Prefer AAC (mp4a) over Opus for better compatibility
-                    val isAAC = codecs.contains("mp4a")
-                    val isOpus = codecs.contains("opus")
-
-                    val shouldSelect = when {
-                        bestAudio == null -> true
-                        isAAC && !bestAudio.codecs.contains("mp4a") -> true // Prefer AAC
-                        isAAC && bestAudio.codecs.contains("mp4a") && bitrate > bestAudioBitrate -> true
-                        !isAAC && !bestAudio.codecs.contains("mp4a") && bitrate > bestAudioBitrate -> true
-                        else -> false
-                    }
-
-                    if (shouldSelect) {
-                        bestAudio = AudioFormat(url, bitrate, mimeType, codecs, sampleRate)
-                        bestAudioBitrate = bitrate
-                        debugLog("  ✓ Audio candidate: $codecs @ ${bitrate/1000}kbps")
+                if (shouldSelect) {
+                    bestVideo = VideoFormat(url, width, height, bitrate, mimeType, codecs, fps)
+                    debugLog("  ✓ Video candidate: ${width}x${height} ($codecs) @ ${bitrate/1000}kbps")
+                    if (height == targetHeight && isH264) {
+                        break // Found exact match with H.264
                     }
                 }
             }
 
-            if (bestVideo == null || bestAudio == null) {
-                debugLog("❌ Could not find both video and audio formats")
-                debugLog("   Video: ${bestVideo != null}, Audio: ${bestAudio != null}")
-                if (bestVideo == null) debugLog("   → No video formats had valid URLs after decryption")
-                if (bestAudio == null) debugLog("   → No audio formats had valid URLs after decryption")
+            if (bestVideo == null) {
+                debugLog("❌ Could not find video format for $qualityMode")
                 return null
             }
 
             debugLog("✓ Selected video: ${bestVideo.width}x${bestVideo.height} (${bestVideo.codecs})")
-            debugLog("✓ Selected audio: ${bestAudio.codecs} @ ${bestAudio.bitrate/1000}kbps")
-
-            // Return both URLs separated by ||| for PlayerManager to merge
-            val dualStreamUrl = "${bestVideo.url}|||${bestAudio.url}"
-            debugLog("✅ Returning dual-stream URL for merging")
+            debugLog("✅ Returning video-only URL (music will be added by PlayerManager)")
             debugLog("📹 Video: ${bestVideo.url.take(150)}...")
-            debugLog("🔊 Audio: ${bestAudio.url.take(150)}...")
-            return Pair(dualStreamUrl, "720p with audio (${bestVideo.width}x${bestVideo.height})")
-
-            // Original DASH manifest code (disabled for now due to playback issues)
-            /*
-            // Create DASH manifest
-            val dashManifest = createDashManifestXml(bestVideo, bestAudio)
             
-            // Save manifest to file
-            val manifestFile = File(context.getExternalFilesDir(null), "youtube_dash_manifest.mpd")
-            manifestFile.writeText(dashManifest)
-            
-            debugLog("✓ DASH manifest created at: ${manifestFile.absolutePath}")
-            debugLog("✅ Using custom DASH manifest for ${bestVideo.width}x${bestVideo.height} playback")
-            
-            // Return file:// URI for ExoPlayer
-            return Pair("file://${manifestFile.absolutePath}", "Custom DASH ${bestVideo.width}x${bestVideo.height}")
-            */
+            // Return video URL with special marker for video-only mode
+            return Pair("VIDEO_ONLY|||${bestVideo.url}", "${bestVideo.height}p video-only (${bestVideo.width}x${bestVideo.height})")
 
         } catch (e: Exception) {
             debugLog("❌ Error building DASH manifest: ${e.message}")
             debugLog("Stack trace: ${e.stackTraceToString()}")
             return null
         }
+    }
+
+    private fun tryProgressiveFormat(streamingData: JSONObject): Pair<String, String>? {
+        debugLog("Attempting to find 360p progressive format with audio...")
+        
+        val formats = streamingData.optJSONArray("formats") ?: return null
+        
+        for (i in 0 until formats.length()) {
+            val format = formats.getJSONObject(i)
+            var url = format.optString("url", "")
+
+            if (url.isEmpty() && format.has("signatureCipher")) {
+                val cipher = format.getString("signatureCipher")
+                val videoId = extractVideoId(streamingData.toString()) ?: ""
+                url = kotlinx.coroutines.runBlocking {
+                    signatureDecryptor.decryptSignature(cipher, videoId)
+                } ?: ""
+            }
+
+            if (url.isEmpty()) continue
+
+            val height = format.optInt("height", 0)
+            val mimeType = format.optString("mimeType", "")
+            val hasAudio = format.has("audioQuality") || mimeType.contains("mp4a")
+
+            // Look for 360p with audio
+            if (height == 360 && hasAudio && mimeType.contains("video")) {
+                debugLog("✅ Found 360p progressive format with audio")
+                debugLog("📹 URL: ${url.take(100)}...")
+                return Pair(url, "360p progressive (video+audio)")
+            }
+        }
+
+        debugLog("⚠️ No 360p progressive format found, falling back to adaptive")
+        return null
     }
 
     private fun extractCodecs(mimeType: String): String {
