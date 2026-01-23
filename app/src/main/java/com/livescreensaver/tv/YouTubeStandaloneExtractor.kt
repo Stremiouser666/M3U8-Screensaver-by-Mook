@@ -19,8 +19,15 @@ class YouTubeStandaloneExtractor(
     private val context: Context,
     httpClient: OkHttpClient? = null
 ) {
-    
+
     companion object {
+        private const val TAG = "YouTubeExtractor"
+        private const val ANDROID_API_KEY = "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w"
+        private const val WEB_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+        private const val TV_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+        private const val PLAYER_ENDPOINT = "https://www.youtube.com/youtubei/v1/player"
+        
+        // Quality mode constants
         const val MODE_360_PROGRESSIVE = "360_progressive"
         const val MODE_480_VIDEO_ONLY = "480_video_only"
         const val MODE_720_VIDEO_ONLY = "720_video_only"
@@ -28,17 +35,10 @@ class YouTubeStandaloneExtractor(
         const val MODE_1440_VIDEO_ONLY = "1440_video_only"
         const val MODE_2160_VIDEO_ONLY = "2160_video_only"
     }
-    
+
     private fun getQualityMode(): String {
         val prefs = context.getSharedPreferences("com.livescreensaver.tv_preferences", Context.MODE_PRIVATE)
         return prefs.getString("youtube_quality_mode", MODE_360_PROGRESSIVE) ?: MODE_360_PROGRESSIVE
-    }
-    companion object {
-        private const val TAG = "YouTubeExtractor"
-        private const val ANDROID_API_KEY = "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w"
-        private const val WEB_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
-        private const val TV_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
-        private const val PLAYER_ENDPOINT = "https://www.youtube.com/youtubei/v1/player"
     }
 
     private val httpClient = httpClient ?: OkHttpClient.Builder()
@@ -550,7 +550,7 @@ class YouTubeStandaloneExtractor(
             debugLog("✓ Selected video: ${bestVideo.width}x${bestVideo.height} (${bestVideo.codecs})")
             debugLog("✅ Returning video-only URL (music will be added by PlayerManager)")
             debugLog("📹 Video: ${bestVideo.url.take(150)}...")
-            
+
             // Return video URL with special marker for video-only mode
             return Pair("VIDEO_ONLY|||${bestVideo.url}", "${bestVideo.height}p video-only (${bestVideo.width}x${bestVideo.height})")
 
@@ -563,9 +563,9 @@ class YouTubeStandaloneExtractor(
 
     private fun tryProgressiveFormat(streamingData: JSONObject): Pair<String, String>? {
         debugLog("Attempting to find 360p progressive format with audio...")
-        
+
         val formats = streamingData.optJSONArray("formats") ?: return null
-        
+
         for (i in 0 until formats.length()) {
             val format = formats.getJSONObject(i)
             var url = format.optString("url", "")
