@@ -26,7 +26,7 @@ class YouTubeStandaloneExtractor(
         private const val WEB_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
         private const val TV_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
         private const val PLAYER_ENDPOINT = "https://www.youtube.com/youtubei/v1/player"
-        
+
         // Quality mode constants
         const val MODE_360_PROGRESSIVE = "360_progressive"
         const val MODE_480_VIDEO_ONLY = "480_video_only"
@@ -312,90 +312,36 @@ class YouTubeStandaloneExtractor(
             }
 
             val streamingData = jsonObject.getJSONObject("streamingData")
+            val qualityMode = getQualityMode()
+            
             debugLog("--- Analyzing streaming data ---")
+            debugLog("Quality mode: $qualityMode")
 
-            // Priority 1: HLS manifest (best for live streams, adaptive up to 1080p+)
+            // PRIORITY 1: Quality-based extraction (respects user setting)
+            if (qualityMode == MODE_360_PROGRESSIVE) {
+                debugLog("Attempting 360p progressive mode...")
+                val progressiveResult = tryProgressiveFormat(streamingData)
+                if (progressiveResult != null) {
+                    return progressiveResult
+                }
+                debugLog("⚠️ 360p progressive not found, trying adaptive fallback")
+            }
+
+            // PRIORITY 2: Video-only modes (480p-4K)
+            debugLog("Attempting video-only extraction for $qualityMode...")
+            val videoOnlyResult = buildCustomDashManifest(streamingData)
+            if (videoOnlyResult != null) {
+                return videoOnlyResult
+            }
+
+            // PRIORITY 3: HLS fallback (live streams only)
             val hlsUrl = streamingData.optString("hlsManifestUrl", "")
             if (hlsUrl.isNotEmpty()) {
-                debugLog("✓ Found HLS manifest URL (adaptive, live streaming)")
-                debugLog("HLS URL: ${hlsUrl.take(100)}...")
+                debugLog("⚠️ Using HLS fallback (live stream?)")
                 return Pair(hlsUrl, "HLS manifest")
             }
 
-            // Priority 2: DASH manifest (adaptive streaming, up to 4K)
-            val dashUrl = streamingData.optString("dashManifestUrl", "")
-            if (dashUrl.isNotEmpty()) {
-                debugLog("✓ Found DASH manifest URL (adaptive, up to 4K)")
-                debugLog("DASH URL: ${dashUrl.take(100)}...")
-                return Pair(dashUrl, "DASH manifest")
-            }
-
-            // Priority 3: Build custom DASH manifest from adaptive formats (720p optimized)
-            debugLog("--- Attempting to build custom DASH manifest ---")
-            val dashResult = buildCustomDashManifest(streamingData)
-            if (dashResult != null) {
-                return dashResult
-            }
-
-            // Priority 4: Progressive formats (combined video+audio, fallback to 360p-720p)
-            val formats = streamingData.optJSONArray("formats")
-            if (formats != null && formats.length() > 0) {
-                debugLog("Checking ${formats.length()} progressive formats...")
-
-                var bestUrl: String? = null
-                var bestHeight = 0
-                var bestQuality = ""
-
-                for (i in 0 until formats.length()) {
-                    val format = formats.getJSONObject(i)
-                    var url = format.optString("url", "")
-
-                    // If no direct URL, try to decrypt signatureCipher
-                    if (url.isEmpty() && format.has("signatureCipher")) {
-                        debugLog("⚠️ Format has signatureCipher, attempting decryption...")
-                        val cipher = format.getString("signatureCipher")
-                        val videoId = extractVideoId(streamingData.toString()) ?: ""
-
-                        url = kotlinx.coroutines.runBlocking {
-                            signatureDecryptor.decryptSignature(cipher, videoId)
-                        } ?: ""
-
-                        if (url.isNotEmpty()) {
-                            debugLog("✅ Successfully decrypted signatureCipher!")
-                        } else {
-                            debugLog("❌ Signature decryption failed, skipping format")
-                            continue
-                        }
-                    }
-
-                    val height = format.optInt("height", 0)
-                    val width = format.optInt("width", 0)
-                    val quality = format.optString("qualityLabel", "${width}x${height}")
-                    val mimeType = format.optString("mimeType", "")
-                    val hasAudio = format.has("audioQuality") || mimeType.contains("mp4a") || mimeType.contains("opus")
-
-                    debugLog("  - Progressive: $quality (${mimeType}) [URL:${url.isNotEmpty()}] [Audio:$hasAudio]")
-
-                    if (url.isNotEmpty() && hasAudio && mimeType.contains("video")) {
-                        if (bestUrl == null || height > bestHeight) {
-                            bestUrl = url
-                            bestHeight = height
-                            bestQuality = if (quality.isEmpty()) "${width}x${height}" else quality
-                            debugLog("    → Selected: $bestQuality (has audio)")
-                        }
-                    }
-                }
-
-                if (!bestUrl.isNullOrEmpty()) {
-                    debugLog("✓ Using progressive format: $bestQuality (video+audio combined)")
-                    debugLog("Progressive URL: ${bestUrl.take(100)}...")
-                    return Pair(bestUrl, "Progressive $bestQuality")
-                } else {
-                    debugLog("⚠️ No progressive format with audio found")
-                }
-            }
-
-            debugLog("❌ No playable formats found in response")
+            debugLog("❌ No playable formats found")
             return null
 
         } catch (e: Exception) {
