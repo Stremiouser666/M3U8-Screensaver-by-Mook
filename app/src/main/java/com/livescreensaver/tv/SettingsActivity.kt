@@ -403,16 +403,6 @@ class SettingsActivity : FragmentActivity() {
             }
             playbackCategory.addPreference(resumeInfoPref)
 
-            val preferredResolutionPref = ListPreference(context).apply {
-                key = "preferred_resolution"
-                title = getString(R.string.pref_preferred_resolution_title)
-                summary = getString(R.string.pref_preferred_resolution_summary)
-                entries = resources.getStringArray(R.array.resolution_entries)
-                entryValues = resources.getStringArray(R.array.resolution_values)
-                setDefaultValue("auto")
-                summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
-            }
-            playbackCategory.addPreference(preferredResolutionPref)
             val youtubeQualityModePref = ListPreference(context).apply {
     key = "youtube_quality_mode"
     title = getString(R.string.pref_youtube_quality_mode_title)
