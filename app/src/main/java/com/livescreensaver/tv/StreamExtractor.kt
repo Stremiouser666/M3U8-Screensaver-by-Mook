@@ -25,6 +25,7 @@ class StreamExtractor(
         private const val KEY_ORIGINAL_URL = "original_url"
         private const val KEY_EXTRACTED_URL = "extracted_url"
         private const val KEY_URL_TYPE = "url_type"
+        private const val KEY_QUALITY_MODE = "quality_mode"
     }
 
     private val cacheDir = File(context.cacheDir, CACHE_DIR).apply { mkdirs() }
@@ -32,7 +33,7 @@ class StreamExtractor(
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
-    
+
     private val standaloneExtractor = YouTubeStandaloneExtractor(context, httpClient)
 
     fun needsExtraction(url: String): Boolean {
@@ -52,10 +53,15 @@ class StreamExtractor(
         }
     }
 
+    private fun getQualityMode(): String {
+        val prefs = context.getSharedPreferences("com.livescreensaver.tv_preferences", Context.MODE_PRIVATE)
+        return prefs.getString("youtube_quality_mode", "360_progressive") ?: "360_progressive"
+    }
+
     suspend fun extractStreamUrl(sourceUrl: String, forceRefresh: Boolean, cacheExpirationSeconds: Long): String? = withContext(Dispatchers.IO) {
         try {
             FileLogger.log("🎬 Starting extraction for: $sourceUrl", TAG)
-            
+
             if (!isNetworkAvailable()) {
                 FileLogger.log("📵 No network available - using cached URL", TAG)
                 Log.w(TAG, "📵 No network available - using cached URL")
@@ -74,10 +80,10 @@ class StreamExtractor(
                 }
                 return@withContext extractedUrl
             }
-            
+
             FileLogger.log("🎬 Extracting YouTube URL...", TAG)
             Log.d(TAG, "🎬 Extracting YouTube URL...")
-            
+
             // Try standalone extractor first
             try {
                 FileLogger.log("🔧 Trying standalone extractor...", TAG)
@@ -96,7 +102,7 @@ class StreamExtractor(
                 FileLogger.logError("Standalone extractor exception", e, TAG)
                 Log.e(TAG, "❌ Standalone extractor exception", e)
             }
-            
+
             // Fallback to NewPipe
             try {
                 FileLogger.log("🔄 Trying NewPipe as fallback...", TAG)
@@ -104,7 +110,7 @@ class StreamExtractor(
                 NewPipe.init(DownloaderImpl())
                 val info = StreamInfo.getInfo(sourceUrl)
                 val extractedUrl = info.hlsUrl
-                
+
                 if (extractedUrl != null) {
                     FileLogger.log("✅ NewPipe extraction succeeded", TAG)
                     FileLogger.log("📺 Stream URL: $extractedUrl", TAG)
@@ -119,7 +125,7 @@ class StreamExtractor(
                 FileLogger.logError("NewPipe extraction exception", e, TAG)
                 Log.e(TAG, "❌ NewPipe extraction exception", e)
             }
-            
+
             // Both methods failed
             FileLogger.log("❌ All YouTube extraction methods failed for: $sourceUrl", TAG)
             Log.e(TAG, "❌ All YouTube extraction methods failed")
@@ -180,14 +186,32 @@ class StreamExtractor(
     }
 
     private fun saveToCache(originalUrl: String, extractedUrl: String, urlType: String) {
+        val qualityMode = getQualityMode()
         cachePrefs.edit()
             .putString(KEY_ORIGINAL_URL, originalUrl)
             .putString(KEY_EXTRACTED_URL, extractedUrl)
             .putString(KEY_URL_TYPE, urlType)
+            .putString(KEY_QUALITY_MODE, qualityMode)
             .apply()
+        
+        FileLogger.log("💾 Cached URL with quality mode: $qualityMode", TAG)
     }
 
-    fun getCachedUrl(): String? = cachePrefs.getString(KEY_EXTRACTED_URL, null)
+    fun getCachedUrl(): String? {
+        val currentQuality = getQualityMode()
+        val cachedQuality = cachePrefs.getString(KEY_QUALITY_MODE, null)
+        
+        // Only use cache if quality mode matches
+        return if (currentQuality == cachedQuality) {
+            val cachedUrl = cachePrefs.getString(KEY_EXTRACTED_URL, null)
+            FileLogger.log("✅ Cache hit - quality mode matches: $currentQuality", TAG)
+            cachedUrl
+        } else {
+            FileLogger.log("⚠️ Cache miss - quality changed from $cachedQuality to $currentQuality", TAG)
+            null // Force re-extraction if quality changed
+        }
+    }
+    
     fun getCachedOriginalUrl(): String? = cachePrefs.getString(KEY_ORIGINAL_URL, null)
     fun getCachedUrlType(): String? = cachePrefs.getString(KEY_URL_TYPE, null)
 }
