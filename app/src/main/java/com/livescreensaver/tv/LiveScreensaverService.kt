@@ -126,6 +126,9 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
             prefCache = preferenceManager.loadPreferenceCache()
             streamExtractor = StreamExtractor(this, cachePrefs)
 
+            // Check if URL selection has changed and invalidate cache if needed
+            checkAndInvalidateCacheIfNeeded()
+            
             refreshUrlIfNeeded()
             setupSurface()
 
@@ -142,6 +145,33 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
         }
     }
 
+    /**
+     * Checks if the active URL has changed since last time and invalidates cache if needed
+     */
+    private fun checkAndInvalidateCacheIfNeeded() {
+        val cache = prefCache ?: return
+        val currentUrl = scheduleManager.getScheduledUrl(cache)
+        val lastActiveUrl = preferenceManager.getLastActiveUrl()
+
+        if (lastActiveUrl != null && currentUrl != lastActiveUrl) {
+            Log.d(TAG, "🔄 Active URL changed from [$lastActiveUrl] to [$currentUrl]")
+            Log.d(TAG, "🗑️ Invalidating cached stream URL")
+            
+            // Clear the cached extracted stream
+            cachePrefs.edit()
+                .remove("original_url")
+                .remove("extracted_url")
+                .remove("url_type")
+                .apply()
+            
+            FileLogger.log("Cache invalidated due to URL change")
+        }
+
+        // Save the current URL as the last active one
+        preferenceManager.saveLastActiveUrl(currentUrl)
+        Log.d(TAG, "💾 Saved current active URL: $currentUrl")
+    }
+
     private fun refreshUrlIfNeeded() {
         val originalUrl = streamExtractor.getCachedOriginalUrl()
         val urlType = streamExtractor.getCachedUrlType()
@@ -151,9 +181,10 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
             return
         }
 
-        val currentMainUrl = preferences.getString(PREF_VIDEO_URL, DEFAULT_VIDEO_URL) ?: DEFAULT_VIDEO_URL
+        val cache = prefCache ?: return
+        val currentActiveUrl = scheduleManager.getScheduledUrl(cache)
 
-        if (currentMainUrl.contains(".m3u8")) {
+        if (currentActiveUrl.contains(".m3u8")) {
             Log.d(TAG, "✅ Direct HLS URL - no refresh needed")
             return
         }
@@ -168,7 +199,8 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
                             streamExtractor.extractRutubeUrl(originalUrl)
                         }
                         if (refreshedUrl != null) {
-                            preferences.edit().putString(PREF_VIDEO_URL, refreshedUrl).apply()
+                            // Only update the main video_url pref, not the cached extracted URL
+                            // This will be re-extracted in loadStream if needed
                             Log.d(TAG, "✅ Rutube URL refreshed")
                         } else {
                             Log.w(TAG, "⚠️ Rutube refresh failed - will try cached URL")
@@ -256,11 +288,11 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
                                 }
                             }
                         }
-                        
+
                         val isPlaying = state == Player.STATE_READY && playerManager.getPlayer()?.playWhenReady == true
                         handlePlayingChanged(isPlaying)
                     }
-                    
+
                     override fun onPlayerError(error: Exception) {
                         hideLoadingAnimation()
                         handlePlaybackFailure()
@@ -302,7 +334,7 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
             if (resumedPosition != null && resumedPosition > 0) {
                 player.seekTo(resumedPosition)
             }
-            
+
             hasProcessedPlayback = true
         }
     }
@@ -317,7 +349,12 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
 
     private fun getVideoUrl(): String {
         val cache = prefCache ?: return preferences.getString(PREF_VIDEO_URL, DEFAULT_VIDEO_URL) ?: DEFAULT_VIDEO_URL
-        return scheduleManager.getScheduledUrl(cache)
+        val selectedUrl = scheduleManager.getScheduledUrl(cache)
+        
+        Log.d(TAG, "Selected URL for playback: $selectedUrl")
+        FileLogger.log("Selected URL: $selectedUrl")
+        
+        return selectedUrl
     }
 
     private fun loadStream(sourceUrl: String) {
@@ -334,13 +371,17 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
                 val streamUrl = withTimeout(EXTRACTION_TIMEOUT_MS) {
                     if (streamExtractor.needsExtraction(sourceUrl)) {
                         FileLogger.log("✅ Needs extraction: true", TAG)
+                        
+                        // Check if the cached URL matches the current source
+                        val cachedOriginal = streamExtractor.getCachedOriginalUrl()
                         val cachedUrl = streamExtractor.getCachedUrl()
-                        if (cachedUrl != null && cachedUrl.isNotEmpty()) {
-                            FileLogger.log("✅ Trying cached extracted URL first: $cachedUrl", TAG)
-                            Log.d(TAG, "✅ Trying cached extracted URL first")
+                        
+                        if (cachedOriginal == sourceUrl && cachedUrl != null && cachedUrl.isNotEmpty()) {
+                            FileLogger.log("✅ Using cached extracted URL: $cachedUrl", TAG)
+                            Log.d(TAG, "✅ Using cached extracted URL")
                             cachedUrl
                         } else {
-                            FileLogger.log("⚠️ No cached URL, extracting...", TAG)
+                            FileLogger.log("⚠️ Cache miss or different source, extracting...", TAG)
                             streamExtractor.extractStreamUrl(sourceUrl, false, CACHE_DURATION)
                                 ?: streamExtractor.extractStreamUrl(sourceUrl, true, CACHE_DURATION)
                         }
@@ -433,7 +474,7 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
         isRetrying = false
         hasProcessedPlayback = false
         playerManager.release()
-        
+
         // Reinitialize player for retry
         val surface = surfaceView?.holder?.surface
         if (surface != null) {
