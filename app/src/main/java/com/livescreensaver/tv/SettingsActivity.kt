@@ -650,48 +650,17 @@ class SettingsActivity : FragmentActivity() {
         }
 
         private fun showResumeInfoDialog() {
-            val message = """
-                How Resume interacts with Random Seek:
-                
-                • Resume OFF + Random Seek ON
-                  Always start at random position
-                
-                • Resume ON + Random Seek OFF
-                  Always resume from last position
-                
-                • Resume ON + Random Seek ON
-                  Smart mode (resume if recent)
-                
-                Resume works when:
-                ✓ Same URL is still set
-                ✓ Less than 5 minutes passed
-                ✓ Resume feature enabled
-            """.trimIndent()
-
             AlertDialog.Builder(requireContext())
-                .setTitle("Playback Behavior")
-                .setMessage(message)
+                .setTitle(getString(R.string.pref_resume_behavior_title))
+                .setMessage(getString(R.string.dialog_resume_behavior_message))
                 .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
                 .show()
         }
 
         private fun showYoutubeQualityInfoDialog() {
-            val message = """
-                Quality Mode Information:
-                
-                • 360p: Single stream with audio
-                  Works on all devices
-                
-                • 480p-4K: Video only with background music
-                
-                Video-only modes use less bandwidth and work better on older devices. Background music plays if available (res/raw/ambient_music.mp3), otherwise silent.
-                
-                This setting applies to both YouTube and Rutube videos.
-            """.trimIndent()
-
             AlertDialog.Builder(requireContext())
-                .setTitle("YouTube/Rutube Quality")
-                .setMessage(message)
+                .setTitle(getString(R.string.pref_youtube_quality_info_title))
+                .setMessage(getString(R.string.dialog_youtube_quality_message))
                 .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
                 .show()
         }
