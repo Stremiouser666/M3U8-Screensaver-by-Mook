@@ -28,7 +28,11 @@ data class PreferenceCache(
 )
 
 class AppPreferenceManager(private val preferences: SharedPreferences) {
-    
+
+    companion object {
+        private const val PREF_LAST_ACTIVE_URL = "last_active_url"
+    }
+
     fun loadPreferenceCache(): PreferenceCache {
         return PreferenceCache(
             audioEnabled = preferences.getBoolean("audio_enabled", false),
@@ -55,12 +59,33 @@ class AppPreferenceManager(private val preferences: SharedPreferences) {
             preferredResolution = preferences.getString("preferred_resolution", "auto") ?: "auto"
         )
     }
-    
+
     fun getLoadingAnimationType(): String {
         return preferences.getString("loading_animation_type", "spinning_dots") ?: "spinning_dots"
     }
-    
+
     fun getLoadingAnimationText(): String {
         return preferences.getString("loading_animation_text", "Loading") ?: "Loading"
+    }
+
+    /**
+     * Gets the last URL that was actively used for playback
+     */
+    fun getLastActiveUrl(): String? {
+        return preferences.getString(PREF_LAST_ACTIVE_URL, null)
+    }
+
+    /**
+     * Saves the currently active URL for comparison on next startup
+     */
+    fun saveLastActiveUrl(url: String) {
+        preferences.edit().putString(PREF_LAST_ACTIVE_URL, url).apply()
+    }
+
+    /**
+     * Clears the last active URL (useful when forcing a refresh)
+     */
+    fun clearLastActiveUrl() {
+        preferences.edit().remove(PREF_LAST_ACTIVE_URL).apply()
     }
 }
