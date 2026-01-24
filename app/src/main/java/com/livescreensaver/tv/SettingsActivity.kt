@@ -5,7 +5,6 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.FragmentActivity
 import androidx.leanback.preference.LeanbackPreferenceFragmentCompat
 import androidx.leanback.preference.LeanbackSettingsFragmentCompat
@@ -396,42 +395,32 @@ class SettingsActivity : FragmentActivity() {
             }
             playbackCategory.addPreference(resumeEnabledPref)
 
-            // CHANGED: Replace non-selectable Preference with clickable dialog
             val resumeInfoPref = Preference(context).apply {
                 key = "resume_info"
                 title = getString(R.string.pref_resume_behavior_title)
-                summary = "Tap for detailed explanation"
-                
-                setOnPreferenceClickListener {
-                    showResumeInfoDialog()
-                    true
-                }
+                summary = getString(R.string.pref_resume_behavior_info)
+                isSelectable = false
             }
             playbackCategory.addPreference(resumeInfoPref)
 
             val youtubeQualityModePref = ListPreference(context).apply {
-                key = "youtube_quality_mode"
-                title = getString(R.string.pref_youtube_quality_mode_title)
-                summary = getString(R.string.pref_youtube_quality_mode_summary)
-                entries = resources.getStringArray(R.array.youtube_quality_mode_entries)
-                entryValues = resources.getStringArray(R.array.youtube_quality_mode_values)
-                setDefaultValue("360_progressive")
-                summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
-            }
-            playbackCategory.addPreference(youtubeQualityModePref)
+    key = "youtube_quality_mode"
+    title = getString(R.string.pref_youtube_quality_mode_title)
+    summary = getString(R.string.pref_youtube_quality_mode_summary)
+    entries = resources.getStringArray(R.array.youtube_quality_mode_entries)
+    entryValues = resources.getStringArray(R.array.youtube_quality_mode_values)
+    setDefaultValue("360_progressive")  // Safe default
+    summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
+}
+playbackCategory.addPreference(youtubeQualityModePref)
 
-            // CHANGED: Replace non-selectable Preference with clickable dialog
-            val youtubeQualityInfoPref = Preference(context).apply {
-                key = "youtube_quality_info"
-                title = getString(R.string.pref_youtube_quality_info_title)
-                summary = "Tap for quality mode details"
-                
-                setOnPreferenceClickListener {
-                    showYoutubeQualityInfoDialog()
-                    true
-                }
-            }
-            playbackCategory.addPreference(youtubeQualityInfoPref)
+val youtubeQualityInfoPref = Preference(context).apply {
+    key = "youtube_quality_info"
+    title = getString(R.string.pref_youtube_quality_info_title)
+    summary = getString(R.string.pref_youtube_quality_info_summary)
+    isSelectable = false
+}
+playbackCategory.addPreference(youtubeQualityInfoPref)
 
             // === AUDIO SECTION ===
             val audioCategory = PreferenceCategory(context).apply {
@@ -466,7 +455,7 @@ class SettingsActivity : FragmentActivity() {
             audioCategory.addPreference(audioVolumePref)
 
             // === CLOCK OVERLAY SECTION ===
-            val clockCategory = PreferenceCategory(context).apply {
+val clockCategory = PreferenceCategory(context).apply {
                 key = "category_clock"
                 title = getString(R.string.pref_category_clock)
             }
@@ -647,22 +636,6 @@ class SettingsActivity : FragmentActivity() {
             debugCategory.addPreference(statsIntervalPref)
 
             preferenceScreen = screen
-        }
-
-        private fun showResumeInfoDialog() {
-            AlertDialog.Builder(requireContext())
-                .setTitle(getString(R.string.pref_resume_behavior_title))
-                .setMessage(getString(R.string.dialog_resume_behavior_message))
-                .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
-                .show()
-        }
-
-        private fun showYoutubeQualityInfoDialog() {
-            AlertDialog.Builder(requireContext())
-                .setTitle(getString(R.string.pref_youtube_quality_info_title))
-                .setMessage(getString(R.string.dialog_youtube_quality_message))
-                .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
-                .show()
         }
 
         private fun updateScheduleVisibility(enabled: Boolean) {
