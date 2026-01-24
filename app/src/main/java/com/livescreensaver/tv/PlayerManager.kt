@@ -135,7 +135,7 @@ class PlayerManager(
         else if (randomSeekEnabled) {
             // Calculate safe random position (avoid last 10% of video)
             val safeEndPosition = (duration * 0.9).toLong()
-            val introDurationMs = if (introEnabled) introDuration * 1000L else 0L
+            val introDurationMs = if (introEnabled) introDuration.toLong() * 1000L else 0L
             
             if (safeEndPosition > introDurationMs) {
                 seekPosition = Random.nextLong(introDurationMs, safeEndPosition)
