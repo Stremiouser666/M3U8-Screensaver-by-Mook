@@ -68,7 +68,21 @@
     <string name="pref_youtube_quality_info_summary">• 360p: Single stream with audio (works on all devices)\n• 480p-4K: Video only with background music\n\nVideo-only modes use less bandwidth and work better on older devices. Background music plays if available (res/raw/ambient_music.mp3), otherwise silent.\n\nThis setting applies to both YouTube and Rutube videos.</string>
 
     <string name="pref_resume_behavior_title">Playback Behavior</string>
-    <string name="pref_resume_behavior_info">How Resume interacts with Random Seek:\n\n• Resume OFF + Random Seek ON\n  Always start at random position\n\n• Resume ON + Random Seek OFF\n  Always resume from last position\n\n• Resume ON + Random Seek ON\n  Smart mode (resume if recent)\n\nResume works when:\n✓ Same URL is still set\n✓ Less than 5 minutes passed\n✓ Resume feature enabled</string>
+    <string name="pref_resume_behavior_info">How Resume interacts with Random Seek:
+
+• Resume OFF + Random Seek ON
+Always start at random position
+
+• Resume ON + Random Seek OFF
+Always resume from last position
+
+• Resume ON + Random Seek ON
+Smart mode (resume if recent)
+
+Resume works when:
+✓ Same URL is still set
+✓ Less than 5 minutes passed
+✓ Resume feature enabled</string>
 
     <string name="pref_video_scaling_title">Video Scaling</string>
     <string name="pref_video_scaling_summary">How video fits on screen</string>
