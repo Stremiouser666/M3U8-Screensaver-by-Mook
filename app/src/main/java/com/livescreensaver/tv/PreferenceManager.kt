@@ -34,7 +34,7 @@ class AppPreferenceManager(private val preferences: SharedPreferences) {
     }
 
     fun loadPreferenceCache(): PreferenceCache {
-        return PreferenceCache(
+        val cache = PreferenceCache(
             audioEnabled = preferences.getBoolean("audio_enabled", false),
             audioVolume = preferences.getString("audio_volume", "50")?.toIntOrNull() ?: 50,
             speedEnabled = preferences.getBoolean("speed_enabled", false),
@@ -57,6 +57,15 @@ class AppPreferenceManager(private val preferences: SharedPreferences) {
             resumeEnabled = preferences.getBoolean("resume_enabled", false),
             preferredResolution = preferences.getString("preferred_resolution", "auto") ?: "auto"
         )
+        
+        // Debug logging
+        android.util.Log.d("AppPreferenceManager", "📋 Loaded preferences:")
+        android.util.Log.d("AppPreferenceManager", "  randomSeekEnabled: ${cache.randomSeekEnabled}")
+        android.util.Log.d("AppPreferenceManager", "  introEnabled: ${cache.introEnabled} (${cache.introDuration}ms)")
+        android.util.Log.d("AppPreferenceManager", "  skipBeginningEnabled: ${cache.skipBeginningEnabled} (${cache.skipBeginningDuration}ms)")
+        android.util.Log.d("AppPreferenceManager", "  speedEnabled: ${cache.speedEnabled} (${cache.playbackSpeed}x)")
+        
+        return cache
     }
 
     fun getLoadingAnimationType(): String {
