@@ -351,17 +351,6 @@ class SettingsActivity : FragmentActivity() {
             }
             playbackCategory.addPreference(randomSeekEnabledPref)
 
-            val videoScalingPref = ListPreference(context).apply {
-                key = "video_scaling_mode"
-                title = getString(R.string.pref_video_scaling_title)
-                summary = getString(R.string.pref_video_scaling_summary)
-                entries = resources.getStringArray(R.array.video_scaling_entries)
-                entryValues = resources.getStringArray(R.array.video_scaling_values)
-                setDefaultValue("scale_to_fit")
-                summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
-            }
-            playbackCategory.addPreference(videoScalingPref)
-
             val speedEnabledPref = SwitchPreference(context).apply {
                 key = "speed_enabled"
                 title = getString(R.string.pref_speed_enabled_title)
