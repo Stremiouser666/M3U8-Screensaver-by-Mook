@@ -22,16 +22,17 @@ class PlayerManager(
     private var musicPlayer: MediaPlayer? = null
     private var streamStartTime: Long = 0
     
-    // Playback preferences
+    // Playback preferences - will be set via updatePreferences()
     private var playbackSpeed: Float = 1.0f
     private var randomSeekEnabled: Boolean = true
     private var introEnabled: Boolean = true
-    private var introDuration: Long = 7000L  // Store in milliseconds
+    private var introDurationMs: Long = 7000L
     private var skipBeginningEnabled: Boolean = false
-    private var skipBeginningDuration: Long = 0
-    private var videoScalingMode: String = "scale_to_fit"
+    private var skipBeginningDurationMs: Long = 0
     private var audioEnabled: Boolean = false
     private var audioVolume: Float = 0.5f
+    
+    private var hasAppliedInitialSeek = false
 
     interface PlayerEventListener {
         fun onPlaybackStateChanged(state: Int)
@@ -40,14 +41,10 @@ class PlayerManager(
 
     fun initialize(surface: Surface) {
         release()
+        hasAppliedInitialSeek = false
 
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                5000,
-                20000,
-                500,
-                2000
-            )
+            .setBufferDurationsMs(5000, 20000, 500, 2000)
             .setPrioritizeTimeOverSizeThresholds(true)
             .setTargetBufferBytes(-1)
             .build()
@@ -57,7 +54,6 @@ class PlayerManager(
             .build()
             .apply {
                 setVideoSurface(surface)
-                
                 playbackParameters = PlaybackParameters(playbackSpeed)
                 volume = if (audioEnabled) audioVolume else 0f
                 
@@ -68,7 +64,11 @@ class PlayerManager(
                             FileLogger.log("⚡ PLAYBACK STARTED in ${latency}ms", "PlayerManager")
                             streamStartTime = 0
                             
-                            handleInitialPlayback()
+                            // Apply initial seek/intro logic when ready
+                            if (!hasAppliedInitialSeek) {
+                                handleInitialPlayback()
+                                hasAppliedInitialSeek = true
+                            }
                         }
                         eventListener.onPlaybackStateChanged(playbackState)
                     }
@@ -84,51 +84,55 @@ class PlayerManager(
         playbackSpeed = if (cache.speedEnabled) cache.playbackSpeed else 1.0f
         randomSeekEnabled = cache.randomSeekEnabled
         introEnabled = cache.introEnabled
-        introDuration = cache.introDuration.toLong() * 1000L  // Convert to ms
+        introDurationMs = cache.introDuration
         skipBeginningEnabled = cache.skipBeginningEnabled
-        skipBeginningDuration = cache.skipBeginningDuration
+        skipBeginningDurationMs = cache.skipBeginningDuration
         audioEnabled = cache.audioEnabled
         audioVolume = cache.audioVolume / 100f
-        videoScalingMode = cache.videoScalingMode
         
         exoPlayer?.let { player ->
             player.playbackParameters = PlaybackParameters(playbackSpeed)
             player.volume = if (audioEnabled) audioVolume else 0f
         }
         
-        FileLogger.log("⚙️ Preferences updated - Speed: $playbackSpeed, Audio: ${if (audioEnabled) "${(audioVolume * 100).toInt()}%" else "OFF"}, Scaling: $videoScalingMode", "PlayerManager")
+        FileLogger.log("⚙️ Preferences updated - Speed: $playbackSpeed, Audio: ${if (audioEnabled) "${(audioVolume * 100).toInt()}%" else "OFF"}, RandomSeek: $randomSeekEnabled, Intro: $introEnabled (${introDurationMs}ms), Skip: $skipBeginningEnabled (${skipBeginningDurationMs}ms)", "PlayerManager")
     }
 
     private fun handleInitialPlayback() {
         val player = exoPlayer ?: return
         val duration = player.duration
         
+        FileLogger.log("🎯 handleInitialPlayback - duration: ${duration}ms, skipEnabled: $skipBeginningEnabled, randomEnabled: $randomSeekEnabled, introEnabled: $introEnabled", "PlayerManager")
+        
         if (duration <= 0 || duration == C.TIME_UNSET) {
             FileLogger.log("⚠️ Duration unknown, skipping initial playback setup", "PlayerManager")
             return
         }
 
-        var seekPosition = 0L
-
-        if (skipBeginningEnabled && skipBeginningDuration > 0) {
-            seekPosition = skipBeginningDuration  // Already in milliseconds
-            FileLogger.log("⏩ Skip beginning: ${skipBeginningDuration / 1000}s", "PlayerManager")
+        // Priority 1: Skip beginning
+        if (skipBeginningEnabled && skipBeginningDurationMs > 0) {
+            player.seekTo(skipBeginningDurationMs)
+            FileLogger.log("⏩ Skip beginning: ${skipBeginningDurationMs / 1000}s", "PlayerManager")
+            return
         }
-        else if (randomSeekEnabled) {
+        
+        // Priority 2: Random seek (if no skip)
+        if (randomSeekEnabled) {
             val safeEndPosition = (duration * 0.9).toLong()
+            val startPosition = if (introEnabled) introDurationMs else 0L
             
-            if (safeEndPosition > introDuration) {
-                seekPosition = Random.nextLong(introDuration, safeEndPosition)
-                FileLogger.log("🎲 Random seek to: ${seekPosition / 1000}s", "PlayerManager")
+            if (safeEndPosition > startPosition) {
+                val seekPosition = Random.nextLong(startPosition, safeEndPosition)
+                player.seekTo(seekPosition)
+                FileLogger.log("🎲 Random seek to: ${seekPosition / 1000}s (from ${startPosition / 1000}s to ${safeEndPosition / 1000}s)", "PlayerManager")
             }
+            return
         }
-        else if (introEnabled && introDuration > 0) {
-            seekPosition = 0
-            FileLogger.log("▶️ Playing intro: ${introDuration / 1000}s", "PlayerManager")
-        }
-
-        if (seekPosition > 0) {
-            player.seekTo(seekPosition)
+        
+        // Priority 3: Intro play (if enabled and no random seek)
+        if (introEnabled && introDurationMs > 0) {
+            FileLogger.log("▶️ Playing intro: ${introDurationMs / 1000}s", "PlayerManager")
+            // Start from beginning - no seek needed
         }
     }
 
@@ -273,6 +277,7 @@ class PlayerManager(
         stopMusic()
         exoPlayer?.release()
         exoPlayer = null
+        hasAppliedInitialSeek = false
     }
 
     fun setVolume(volume: Float) {
