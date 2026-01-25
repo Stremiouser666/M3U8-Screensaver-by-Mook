@@ -43,10 +43,25 @@ class PlayerManager(
         release()
         hasAppliedInitialSeek = false
 
+        // Adaptive buffer based on playback speed
+        val speedMultiplier = playbackSpeed.coerceAtLeast(1.0f)
+        val minBuffer = (5000 * speedMultiplier).toInt()  // 5s base, scales with speed
+        val maxBuffer = (30000 * speedMultiplier).toInt() // 30s base, scales with speed
+        val playbackBuffer = 1000  // Still start quickly at 1s
+        val rebufferThreshold = (3000 * speedMultiplier).toInt() // 3s base
+        
+        FileLogger.log("🔧 Buffer config for speed ${playbackSpeed}x: min=${minBuffer}ms, max=${maxBuffer}ms, rebuffer=${rebufferThreshold}ms", "PlayerManager")
+
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(5000, 20000, 500, 2000)
+            .setBufferDurationsMs(
+                minBuffer,
+                maxBuffer,
+                playbackBuffer,
+                rebufferThreshold
+            )
             .setPrioritizeTimeOverSizeThresholds(true)
             .setTargetBufferBytes(-1)
+            .setBackBuffer(15000, true)  // Keep 15s back buffer for smoother seeking
             .build()
 
         exoPlayer = ExoPlayer.Builder(context)
