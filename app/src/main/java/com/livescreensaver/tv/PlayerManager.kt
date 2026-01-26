@@ -1,335 +1,192 @@
 package com.livescreensaver.tv
 
-import android.content.Context
-import android.media.MediaPlayer
-import android.view.Surface
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.common.PlaybackParameters
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.source.MergingMediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.datasource.DefaultHttpDataSource
-import kotlin.random.Random
+import android.content.Context import android.media.MediaPlayer import android.view.Surface import androidx.media3.common.C import androidx.media3.common.MediaItem import androidx.media3.common.Player import androidx.media3.common.PlaybackParameters import androidx.media3.exoplayer.ExoPlayer import androidx.media3.exoplayer.DefaultLoadControl import androidx.media3.exoplayer.trackselection.DefaultTrackSelector import androidx.media3.exoplayer.source.MergingMediaSource import androidx.media3.exoplayer.source.ProgressiveMediaSource import androidx.media3.datasource.DefaultHttpDataSource import kotlin.random.Random
 
-class PlayerManager(
-    private val context: Context,
-    private val eventListener: PlayerEventListener
-) {
-    private var exoPlayer: ExoPlayer? = null
-    private var musicPlayer: MediaPlayer? = null
-    private var streamStartTime: Long = 0
-    
-    // Playback preferences - will be set via updatePreferences()
-    private var playbackSpeed: Float = 1.0f
-    private var randomSeekEnabled: Boolean = true
-    private var introEnabled: Boolean = true
-    private var introDurationMs: Long = 7000L
-    private var skipBeginningEnabled: Boolean = false
-    private var skipBeginningDurationMs: Long = 0
-    private var audioEnabled: Boolean = false
-    private var audioVolume: Float = 0.5f
-    
-    private var hasAppliedInitialSeek = false
+class PlayerManager( private val context: Context, private val eventListener: PlayerEventListener ) { private var exoPlayer: ExoPlayer? = null private var trackSelector: DefaultTrackSelector? = null private var musicPlayer: MediaPlayer? = null private var streamStartTime: Long = 0
 
-    interface PlayerEventListener {
-        fun onPlaybackStateChanged(state: Int)
-        fun onPlayerError(error: Exception)
+// Playback preferences
+private var playbackSpeed: Float = 1.0f
+private var randomSeekEnabled: Boolean = true
+private var introEnabled: Boolean = true
+private var introDurationMs: Long = 7000L
+private var skipBeginningEnabled: Boolean = false
+private var skipBeginningDurationMs: Long = 0
+private var audioEnabled: Boolean = false
+private var audioVolume: Float = 0.5f
+
+private var hasAppliedInitialSeek = false
+
+interface PlayerEventListener {
+    fun onPlaybackStateChanged(state: Int)
+    fun onPlayerError(error: Exception)
+}
+
+fun initialize(surface: Surface) {
+    release()
+    hasAppliedInitialSeek = false
+
+    // Buffer tuning
+    val speedMultiplier = playbackSpeed.coerceAtLeast(1.0f)
+    val minBuffer = when {
+        playbackSpeed >= 2.0f -> 20000
+        playbackSpeed >= 1.5f -> 25000
+        else -> (30000 * speedMultiplier).toInt()
+    }
+    val maxBuffer = (120000 * speedMultiplier).toInt()
+    val playbackBuffer = 5000
+    val rebufferThreshold = minOf((12000 * speedMultiplier).toInt(), 20000)
+
+    FileLogger.log(
+        "🔧 Buffer config for ${playbackSpeed}x: min=${minBuffer}ms max=${maxBuffer}ms rebuffer=${rebufferThreshold}ms",
+        "PlayerManager"
+    )
+
+    val loadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(minBuffer, maxBuffer, playbackBuffer, rebufferThreshold)
+        .setPrioritizeTimeOverSizeThresholds(true)
+        .setTargetBufferBytes(-1)
+        .setBackBuffer(60000, true)
+        .build()
+
+    trackSelector = DefaultTrackSelector(context).apply {
+        setParameters(buildSmartTrackParameters())
     }
 
-    fun initialize(surface: Surface) {
-        release()
-        hasAppliedInitialSeek = false
+    exoPlayer = ExoPlayer.Builder(context)
+        .setLoadControl(loadControl)
+        .setTrackSelector(trackSelector!!)
+        .build()
+        .apply {
+            setVideoSurface(surface)
+            playbackParameters = PlaybackParameters(playbackSpeed)
+            volume = if (audioEnabled) audioVolume else 0f
+            repeatMode = Player.REPEAT_MODE_ONE
 
-        // MAXIMUM aggressive buffering to match browser/media player performance
-        val speedMultiplier = playbackSpeed.coerceAtLeast(1.0f)
-        val minBuffer = (30000 * speedMultiplier).toInt()  // 30s base (was 15s)
-        val maxBuffer = (120000 * speedMultiplier).toInt() // 120s base (was 90s) - 2 minutes!
-        val playbackBuffer = 5000  // 5s to start (was 3s) - build strong buffer
-        val rebufferThreshold = (20000 * speedMultiplier).toInt() // 20s base (was 12s) - HUGE margin
-        
-        FileLogger.log("🔧 Buffer config for speed ${playbackSpeed}x: min=${minBuffer}ms, max=${maxBuffer}ms, playback=${playbackBuffer}ms, rebuffer=${rebufferThreshold}ms", "PlayerManager")
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_READY && streamStartTime > 0) {
+                        val latency = System.currentTimeMillis() - streamStartTime
+                        FileLogger.log("⚡ PLAYBACK STARTED in ${latency}ms", "PlayerManager")
+                        streamStartTime = 0
 
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                minBuffer,
-                maxBuffer,
-                playbackBuffer,
-                rebufferThreshold
-            )
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .setTargetBufferBytes(-1)  // No byte limit - use all available RAM
-            .setBackBuffer(60000, true)  // Keep 60s back buffer (was 30s) - 1 full minute
-            .build()
-
-        exoPlayer = ExoPlayer.Builder(context)
-            .setLoadControl(loadControl)
-            .build()
-            .apply {
-                setVideoSurface(surface)
-                playbackParameters = PlaybackParameters(playbackSpeed)
-                volume = if (audioEnabled) audioVolume else 0f
-                repeatMode = Player.REPEAT_MODE_ONE
-                
-                addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        if (playbackState == Player.STATE_READY && streamStartTime > 0) {
-                            val latency = System.currentTimeMillis() - streamStartTime
-                            FileLogger.log("⚡ PLAYBACK STARTED in ${latency}ms", "PlayerManager")
-                            streamStartTime = 0
-                            
-                            if (!hasAppliedInitialSeek) {
-                                handleInitialPlayback()
-                                hasAppliedInitialSeek = true
-                            }
+                        if (!hasAppliedInitialSeek) {
+                            handleInitialPlayback()
+                            hasAppliedInitialSeek = true
                         }
-                        eventListener.onPlaybackStateChanged(playbackState)
                     }
-
-                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                        eventListener.onPlayerError(Exception(error))
-                    }
-                })
-            }
-    }
-
-    fun updatePreferences(cache: PreferenceCache) {
-        playbackSpeed = if (cache.speedEnabled) cache.playbackSpeed else 1.0f
-        randomSeekEnabled = cache.randomSeekEnabled
-        introEnabled = cache.introEnabled
-        introDurationMs = cache.introDuration
-        skipBeginningEnabled = cache.skipBeginningEnabled
-        skipBeginningDurationMs = cache.skipBeginningDuration
-        audioEnabled = cache.audioEnabled
-        audioVolume = cache.audioVolume / 100f
-        
-        exoPlayer?.let { player ->
-            player.playbackParameters = PlaybackParameters(playbackSpeed)
-            player.volume = if (audioEnabled) audioVolume else 0f
-        }
-        
-        FileLogger.log("⚙️ Preferences updated - Speed: $playbackSpeed, Audio: ${if (audioEnabled) "${(audioVolume * 100).toInt()}%" else "OFF"}, RandomSeek: $randomSeekEnabled, Intro: $introEnabled (${introDurationMs}ms), Skip: $skipBeginningEnabled (${skipBeginningDurationMs}ms)", "PlayerManager")
-    }
-
-    private fun handleInitialPlayback() {
-        val player = exoPlayer ?: return
-        val duration = player.duration
-        
-        FileLogger.log("🎯 handleInitialPlayback - duration: ${duration}ms, skipEnabled: $skipBeginningEnabled (${skipBeginningDurationMs}ms), randomEnabled: $randomSeekEnabled, introEnabled: $introEnabled (${introDurationMs}ms)", "PlayerManager")
-        
-        if (duration <= 0 || duration == C.TIME_UNSET) {
-            FileLogger.log("⚠️ Duration unknown, skipping initial playback setup", "PlayerManager")
-            return
-        }
-
-        // Priority 1: Skip beginning + Random seek
-        if (skipBeginningEnabled && skipBeginningDurationMs > 0 && randomSeekEnabled) {
-            val safeEndPosition = (duration * 0.9).toLong()
-            if (safeEndPosition > skipBeginningDurationMs) {
-                val seekPosition = Random.nextLong(skipBeginningDurationMs, safeEndPosition)
-                player.seekTo(seekPosition)
-                FileLogger.log("⏩🎲 Skip + Random: ${seekPosition / 1000}s (range: ${skipBeginningDurationMs / 1000}s to ${safeEndPosition / 1000}s)", "PlayerManager")
-            } else {
-                player.seekTo(skipBeginningDurationMs)
-                FileLogger.log("⏩ Skip beginning: ${skipBeginningDurationMs / 1000}s (video too short for random)", "PlayerManager")
-            }
-            return
-        }
-        
-        // Priority 2: Skip beginning only
-        if (skipBeginningEnabled && skipBeginningDurationMs > 0) {
-            player.seekTo(skipBeginningDurationMs)
-            FileLogger.log("⏩ Skip beginning: ${skipBeginningDurationMs / 1000}s", "PlayerManager")
-            return
-        }
-        
-        // Priority 3: Intro + Random seek (play intro THEN seek randomly)
-        if (introEnabled && introDurationMs > 0 && randomSeekEnabled) {
-            FileLogger.log("▶️ Playing intro: ${introDurationMs / 1000}s, then will random seek", "PlayerManager")
-            // Start from beginning (no seek)
-            // Schedule random seek after intro duration
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                if (exoPlayer != null && (exoPlayer!!.playbackState == Player.STATE_READY || exoPlayer!!.playbackState == Player.STATE_BUFFERING)) {
-                    val safeEndPosition = (duration * 0.9).toLong()
-                    if (safeEndPosition > introDurationMs) {
-                        val seekPosition = Random.nextLong(introDurationMs, safeEndPosition)
-                        exoPlayer!!.seekTo(seekPosition)
-                        FileLogger.log("🎲 After intro, random seek to: ${seekPosition / 1000}s (range: ${introDurationMs / 1000}s to ${safeEndPosition / 1000}s)", "PlayerManager")
-                    }
+                    eventListener.onPlaybackStateChanged(playbackState)
                 }
-            }, introDurationMs)
-            return
-        }
-        
-        // Priority 4: Random seek only (no intro)
-        if (randomSeekEnabled) {
-            val safeEndPosition = (duration * 0.9).toLong()
-            val startPosition = 0L
-            
-            if (safeEndPosition > startPosition) {
-                val seekPosition = Random.nextLong(startPosition, safeEndPosition)
-                player.seekTo(seekPosition)
-                FileLogger.log("🎲 Random seek to: ${seekPosition / 1000}s (range: ${startPosition / 1000}s to ${safeEndPosition / 1000}s)", "PlayerManager")
-            }
-            return
-        }
-        
-        // Priority 5: Intro play only (no random seek)
-        if (introEnabled && introDurationMs > 0) {
-            FileLogger.log("▶️ Playing intro: ${introDurationMs / 1000}s (no random seek)", "PlayerManager")
-            // Start from beginning - no seek needed
-        }
-    }
 
-    fun playStream(url: String) {
-        val player = exoPlayer ?: return
-
-        try {
-            stopMusic()
-
-            if (url.startsWith("VIDEO_ONLY|||")) {
-                val videoUrl = url.substringAfter("VIDEO_ONLY|||")
-                FileLogger.log("🎬 Loading video-only stream with music", "PlayerManager")
-                playVideoOnly(videoUrl)
-                return
-            }
-
-            if (url.contains("|||")) {
-                val parts = url.split("|||")
-                if (parts.size == 2) {
-                    val videoUrl = parts[0]
-                    val audioUrl = parts[1]
-                    FileLogger.log("🎬 Merging video + audio streams", "PlayerManager")
-                    playMergedStream(videoUrl, audioUrl)
-                    return
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    eventListener.onPlayerError(Exception(error))
                 }
-            }
+            })
+        }
+}
 
-            FileLogger.log("🎬 Loading single stream: ${url.take(100)}...", "PlayerManager")
-            streamStartTime = System.currentTimeMillis()
-            val mediaItem = MediaItem.fromUri(url)
-            player.setMediaItem(mediaItem)
-            player.prepare()
-            player.play()
+fun updatePreferences(cache: PreferenceCache) {
+    playbackSpeed = if (cache.speedEnabled) cache.playbackSpeed else 1.0f
+    randomSeekEnabled = cache.randomSeekEnabled
+    introEnabled = cache.introEnabled
+    introDurationMs = cache.introDuration
+    skipBeginningEnabled = cache.skipBeginningEnabled
+    skipBeginningDurationMs = cache.skipBeginningDuration
+    audioEnabled = cache.audioEnabled
+    audioVolume = cache.audioVolume / 100f
 
-        } catch (e: Exception) {
-            FileLogger.log("❌ Error loading stream: ${e.message}", "PlayerManager")
-            eventListener.onPlayerError(e)
+    exoPlayer?.let { player ->
+        player.playbackParameters = PlaybackParameters(playbackSpeed)
+        player.volume = if (audioEnabled) audioVolume else 0f
+    }
+
+    // Apply smart bitrate caps dynamically
+    trackSelector?.setParameters(buildSmartTrackParameters())
+
+    FileLogger.log(
+        "⚙️ Prefs updated - Speed=$playbackSpeed Audio=${if (audioEnabled) "ON" else "OFF"}",
+        "PlayerManager"
+    )
+}
+
+private fun buildSmartTrackParameters(): DefaultTrackSelector.Parameters {
+    val builder = trackSelector?.buildUponParameters() ?: DefaultTrackSelector.ParametersBuilder(context)
+
+    when {
+        playbackSpeed >= 2.0f -> {
+            // 2x: prefer stability
+            builder
+                .setMaxVideoBitrate(8_000_000)      // 1080p-safe
+                .setMaxVideoSize(1280, 720)         // force 720p at 2x
+                .setForceHighestSupportedBitrate(false)
+        }
+        playbackSpeed >= 1.5f -> {
+            // 1.5x: near-transparent cap for 1080p
+            builder
+                .setMaxVideoBitrate(10_000_000)     // visually lossless at 1.5x
+                .setForceHighestSupportedBitrate(false)
+        }
+        else -> {
+            // 1x: no caps
+            builder
+                .setMaxVideoBitrate(Int.MAX_VALUE)
+                .clearVideoSizeConstraints()
         }
     }
 
-    private fun playVideoOnly(videoUrl: String) {
-        val player = exoPlayer ?: return
+    return builder.build()
+}
 
-        try {
-            streamStartTime = System.currentTimeMillis()
-            val mediaItem = MediaItem.fromUri(videoUrl)
-            player.setMediaItem(mediaItem)
-            player.volume = 0f
-            player.prepare()
-            player.play()
+private fun handleInitialPlayback() {
+    val player = exoPlayer ?: return
+    val duration = player.duration
 
-            FileLogger.log("✅ Video-only stream loaded (muted)", "PlayerManager")
-            startMusic()
+    if (duration <= 0 || duration == C.TIME_UNSET) return
 
-        } catch (e: Exception) {
-            FileLogger.log("❌ Error loading video-only stream: ${e.message}", "PlayerManager")
-            eventListener.onPlayerError(e)
-        }
+    if (skipBeginningEnabled && skipBeginningDurationMs > 0 && randomSeekEnabled && playbackSpeed < 2.0f) {
+        val safeEndPosition = (duration * 0.9).toLong()
+        val seekPosition = Random.nextLong(skipBeginningDurationMs, safeEndPosition)
+        player.seekTo(seekPosition)
+        return
     }
 
-    private fun startMusic() {
-        try {
-            val musicResId = context.resources.getIdentifier("ambient_music", "raw", context.packageName)
-
-            if (musicResId == 0) {
-                FileLogger.log("ℹ️ No background music file found (res/raw/ambient_music.mp3)", "PlayerManager")
-                return
-            }
-
-            musicPlayer = MediaPlayer.create(context, musicResId)?.apply {
-                isLooping = true
-                setVolume(0.3f, 0.3f)
-                start()
-                FileLogger.log("🎵 Background music started", "PlayerManager")
-            }
-
-        } catch (e: Exception) {
-            FileLogger.log("⚠️ Could not start background music: ${e.message}", "PlayerManager")
-        }
+    if (skipBeginningEnabled && skipBeginningDurationMs > 0) {
+        player.seekTo(skipBeginningDurationMs)
+        return
     }
 
-    private fun stopMusic() {
-        musicPlayer?.apply {
-            if (isPlaying) {
-                stop()
-            }
-            release()
-        }
-        musicPlayer = null
+    if (introEnabled && introDurationMs > 0 && randomSeekEnabled && playbackSpeed < 2.0f) {
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            val safeEndPosition = (duration * 0.9).toLong()
+            val seekPosition = Random.nextLong(introDurationMs, safeEndPosition)
+            exoPlayer?.seekTo(seekPosition)
+        }, introDurationMs)
     }
+}
 
-    private fun playMergedStream(videoUrl: String, audioUrl: String) {
-        val player = exoPlayer ?: return
-
-        try {
-            streamStartTime = System.currentTimeMillis()
-            val dataSourceFactory = DefaultHttpDataSource.Factory()
-                .setConnectTimeoutMs(5000)
-                .setReadTimeoutMs(5000)
-
-            val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-                .createMediaSource(MediaItem.fromUri(videoUrl))
-
-            val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-                .createMediaSource(MediaItem.fromUri(audioUrl))
-
-            val merged = MergingMediaSource(videoSource, audioSource)
-
-            FileLogger.log("✅ Merged source created (buffering ~5s before start)", "PlayerManager")
-
-            player.setMediaSource(merged)
-            player.prepare()
-            player.play()
-
-        } catch (e: Exception) {
-            FileLogger.log("❌ Error merging: ${e.message}", "PlayerManager")
-            eventListener.onPlayerError(e)
-        }
-    }
-
-    fun pause() {
-        exoPlayer?.pause()
-    }
-
-    fun resume() {
-        exoPlayer?.play()
-    }
-
-    fun seekTo(positionMs: Long) {
-        exoPlayer?.seekTo(positionMs)
-    }
-
-    fun getCurrentPosition(): Long {
-        return exoPlayer?.currentPosition ?: 0
-    }
-
-    fun getDuration(): Long {
-        return exoPlayer?.duration ?: 0
-    }
-
-    fun release() {
+fun playStream(url: String) {
+    val player = exoPlayer ?: return
+    try {
         stopMusic()
-        exoPlayer?.release()
-        exoPlayer = null
-        hasAppliedInitialSeek = false
+        streamStartTime = System.currentTimeMillis()
+        player.setMediaItem(MediaItem.fromUri(url))
+        player.prepare()
+        player.play()
+    } catch (e: Exception) {
+        eventListener.onPlayerError(e)
     }
+}
 
-    fun setVolume(volume: Float) {
-        exoPlayer?.volume = volume
-    }
+private fun stopMusic() {
+    musicPlayer?.release()
+    musicPlayer = null
+}
 
-    fun getPlayer(): ExoPlayer? = exoPlayer
+fun release() {
+    stopMusic()
+    exoPlayer?.release()
+    exoPlayer = null
+    trackSelector = null
+    hasAppliedInitialSeek = false
+}
+
 }
