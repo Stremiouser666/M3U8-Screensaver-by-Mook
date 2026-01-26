@@ -43,14 +43,14 @@ class PlayerManager(
         release()
         hasAppliedInitialSeek = false
 
-        // Aggressive buffering for higher speeds
+        // VERY aggressive buffering for higher speeds and qualities
         val speedMultiplier = playbackSpeed.coerceAtLeast(1.0f)
-        val minBuffer = (8000 * speedMultiplier).toInt()  // 8s base (was 5s)
-        val maxBuffer = (50000 * speedMultiplier).toInt() // 50s base (was 30s)
-        val playbackBuffer = 1500  // 1.5s to start (was 1s)
-        val rebufferThreshold = (6000 * speedMultiplier).toInt() // 6s base (was 3s) - much higher!
+        val minBuffer = (15000 * speedMultiplier).toInt()  // 15s base (was 8s)
+        val maxBuffer = (90000 * speedMultiplier).toInt()  // 90s base (was 50s)
+        val playbackBuffer = 3000  // 3s to start (was 1.5s) - build more buffer first
+        val rebufferThreshold = (12000 * speedMultiplier).toInt() // 12s base (was 6s)
         
-        FileLogger.log("🔧 Buffer config for speed ${playbackSpeed}x: min=${minBuffer}ms, max=${maxBuffer}ms, rebuffer=${rebufferThreshold}ms", "PlayerManager")
+        FileLogger.log("🔧 Buffer config for speed ${playbackSpeed}x: min=${minBuffer}ms, max=${maxBuffer}ms, playback=${playbackBuffer}ms, rebuffer=${rebufferThreshold}ms", "PlayerManager")
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -60,8 +60,8 @@ class PlayerManager(
                 rebufferThreshold
             )
             .setPrioritizeTimeOverSizeThresholds(true)
-            .setTargetBufferBytes(-1)
-            .setBackBuffer(20000, true)  // Keep 20s back buffer (was 15s)
+            .setTargetBufferBytes(-1)  // No byte limit
+            .setBackBuffer(30000, true)  // Keep 30s back buffer (was 20s)
             .build()
 
         exoPlayer = ExoPlayer.Builder(context)
@@ -71,7 +71,7 @@ class PlayerManager(
                 setVideoSurface(surface)
                 playbackParameters = PlaybackParameters(playbackSpeed)
                 volume = if (audioEnabled) audioVolume else 0f
-                repeatMode = Player.REPEAT_MODE_ONE  // Loop current stream
+                repeatMode = Player.REPEAT_MODE_ONE
                 
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
@@ -80,7 +80,6 @@ class PlayerManager(
                             FileLogger.log("⚡ PLAYBACK STARTED in ${latency}ms", "PlayerManager")
                             streamStartTime = 0
                             
-                            // Apply initial seek/intro logic when ready
                             if (!hasAppliedInitialSeek) {
                                 handleInitialPlayback()
                                 hasAppliedInitialSeek = true
