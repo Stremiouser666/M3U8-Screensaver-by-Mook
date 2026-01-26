@@ -59,6 +59,26 @@
     <string name="pref_resume_enabled_title">Resume Playback</string>
     <string name="pref_resume_enabled_summary">Continue from last position when screensaver restarts</string>
 
+    <string name="pref_resume_behavior_title">Playback Behavior</string>
+    <string name="pref_resume_behavior_summary">Tap to learn how Resume and Random Seek work together</string>
+    <string name="pref_resume_behavior_info">How Resume interacts with Random Seek:
+
+• Resume OFF + Random Seek ON
+Always start at random position
+
+• Resume ON + Random Seek OFF
+Always resume from last position
+A toast will show the resumed timestamp
+
+• Resume ON + Random Seek ON
+Smart mode: resume if recent, otherwise random
+A toast will show if resuming or seeking randomly
+
+Resume works when:
+✓ Same URL is still set
+✓ Less than 5 minutes passed
+✓ Resume feature enabled</string>
+
     <string name="pref_preferred_resolution_title">Preferred Resolution</string>
     <string name="pref_preferred_resolution_summary">Select video resolution quality</string>
 
