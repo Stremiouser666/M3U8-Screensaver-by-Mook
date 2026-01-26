@@ -255,6 +255,18 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
         releasePlayer()
     }
 
+    private fun extractResolutionFromQualityMode(qualityMode: String): Int {
+        return when {
+            qualityMode.contains("360") -> 360
+            qualityMode.contains("480") -> 480
+            qualityMode.contains("720") -> 720
+            qualityMode.contains("1080") -> 1080
+            qualityMode.contains("1440") -> 1440
+            qualityMode.contains("2160") -> 2160
+            else -> 1080 // default
+        }
+    }
+
     private fun initializePlayer() {
         FileLogger.log("🎮 initializePlayer() called - surfaceReady=$surfaceReady, playerExists=${::playerManager.isInitialized}")
 
@@ -294,13 +306,19 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
             val surface = surfaceView?.holder?.surface
             if (surface != null) {
                 playerManager.initialize(surface)
-                
+
                 // Apply preferences to player
                 prefCache?.let { cache ->
                     playerManager.updatePreferences(cache)
                     FileLogger.log("✅ Preferences applied to PlayerManager")
                 }
-                
+
+                // Set resolution based on quality mode
+                val qualityMode = preferences.getString("youtube_quality_mode", "1080_video_only") ?: "1080_video_only"
+                val resolution = extractResolutionFromQualityMode(qualityMode)
+                playerManager.setResolution(resolution)
+                FileLogger.log("✅ Resolution set to ${resolution}p based on quality mode: $qualityMode")
+
                 loadStream(videoUrl)
                 handler.post(stallCheckRunnable)
             } else {
@@ -313,7 +331,7 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
             handler.postDelayed({ initializePlayer() }, 5000)
         }
     }
-
+    
     private fun handlePlayerReady() {
         hideLoadingAnimation()
         if (!hasProcessedPlayback) {
@@ -475,13 +493,19 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
         val surface = surfaceView?.holder?.surface
         if (surface != null) {
             playerManager.initialize(surface)
-            
+
             // Reapply preferences after retry
             prefCache?.let { cache ->
                 playerManager.updatePreferences(cache)
                 FileLogger.log("✅ Preferences reapplied after retry")
             }
-            
+
+            // Reapply resolution after retry
+            val qualityMode = preferences.getString("youtube_quality_mode", "1080_video_only") ?: "1080_video_only"
+            val resolution = extractResolutionFromQualityMode(qualityMode)
+            playerManager.setResolution(resolution)
+            FileLogger.log("✅ Resolution reapplied after retry: ${resolution}p")
+
             currentSourceUrl?.let { loadStream(it) }
         }
     }
