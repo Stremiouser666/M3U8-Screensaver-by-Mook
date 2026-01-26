@@ -43,12 +43,12 @@ class PlayerManager(
         release()
         hasAppliedInitialSeek = false
 
-        // VERY aggressive buffering for higher speeds and qualities
+        // MAXIMUM aggressive buffering to match browser/media player performance
         val speedMultiplier = playbackSpeed.coerceAtLeast(1.0f)
-        val minBuffer = (15000 * speedMultiplier).toInt()  // 15s base (was 8s)
-        val maxBuffer = (90000 * speedMultiplier).toInt()  // 90s base (was 50s)
-        val playbackBuffer = 3000  // 3s to start (was 1.5s) - build more buffer first
-        val rebufferThreshold = (12000 * speedMultiplier).toInt() // 12s base (was 6s)
+        val minBuffer = (30000 * speedMultiplier).toInt()  // 30s base (was 15s)
+        val maxBuffer = (120000 * speedMultiplier).toInt() // 120s base (was 90s) - 2 minutes!
+        val playbackBuffer = 5000  // 5s to start (was 3s) - build strong buffer
+        val rebufferThreshold = (20000 * speedMultiplier).toInt() // 20s base (was 12s) - HUGE margin
         
         FileLogger.log("🔧 Buffer config for speed ${playbackSpeed}x: min=${minBuffer}ms, max=${maxBuffer}ms, playback=${playbackBuffer}ms, rebuffer=${rebufferThreshold}ms", "PlayerManager")
 
@@ -60,8 +60,8 @@ class PlayerManager(
                 rebufferThreshold
             )
             .setPrioritizeTimeOverSizeThresholds(true)
-            .setTargetBufferBytes(-1)  // No byte limit
-            .setBackBuffer(30000, true)  // Keep 30s back buffer (was 20s)
+            .setTargetBufferBytes(-1)  // No byte limit - use all available RAM
+            .setBackBuffer(60000, true)  // Keep 60s back buffer (was 30s) - 1 full minute
             .build()
 
         exoPlayer = ExoPlayer.Builder(context)
