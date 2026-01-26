@@ -87,11 +87,10 @@ Resume works when:
     <string name="pref_youtube_quality_info_title">Quality Mode Information</string>
     <string name="pref_youtube_quality_info_summary">Tap to learn about quality modes and how they work</string>
     <string name="pref_youtube_quality_info_details">• 360p: Single stream with audio (works on all devices)
-• 480p-4K: Video only with background music
+• 480p-4K: Youtube Videos only
+• 360p-4K: Rutube has video and audio
 
-Video-only modes use less bandwidth and work better on older devices. Background music plays if available (res/raw/ambient_music.mp3), otherwise silent.
-
-This setting applies to both YouTube and Rutube videos.</string>
+Video-only modes use less bandwidth and work better on older devices. This setting applies to  YouTube videos only.</string>
 
     <string name="pref_speed_enabled_title">Enable Speed Control</string>
     <string name="pref_speed_enabled_summary">Adjust playback speed for visual effects</string>
@@ -103,9 +102,9 @@ This setting applies to both YouTube and Rutube videos.</string>
 0.25x, 0.5x, 0.75x, 1.0x (normal), 1.25x, 1.5x, 2.0x
 
 ⚠️ Important Limitation:
-2x speed is NOT available for YouTube videos above 720p resolution.
+2x speed is NOT recommended for YouTube videos above 720p resolution.
 
-For YouTube videos at 1080p, 1440p, or 4K quality, the maximum playback speed is 1.5x.</string>
+For YouTube videos at 1080p, 1440p, or 4K quality, the maximum recommended playback speed is 1x or slower.</string>
 
     <!-- Audio -->
     <string name="pref_category_audio">Audio</string>
