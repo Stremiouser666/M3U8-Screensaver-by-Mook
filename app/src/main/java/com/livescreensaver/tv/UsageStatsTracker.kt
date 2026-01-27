@@ -14,8 +14,8 @@ class UsageStatsTracker(private val statsPrefs: SharedPreferences) {
     fun trackPlaybackUsage() {
         try {
             val dateKey = KEY_USAGE_PREFIX + getTodayDateKey()
-            val currentMinutes = statsPrefs.getLong(dateKey, 0)
-            statsPrefs.edit().putLong(dateKey, currentMinutes + 1).apply()
+            val currentSeconds = statsPrefs.getLong(dateKey, 0)
+            statsPrefs.edit().putLong(dateKey, currentSeconds + 1).apply()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to track usage", e)
         }
@@ -26,32 +26,32 @@ class UsageStatsTracker(private val statsPrefs: SharedPreferences) {
             val calendar = Calendar.getInstance()
             val sdf = SimpleDateFormat("M/d", Locale.getDefault())
             val stats = StringBuilder()
-            var totalMinutes = 0L
-            
+            var totalSeconds = 0L
+
             for (i in 0..6) {
                 val date = calendar.time
                 val dateStr = sdf.format(date)
                 val dateKey = KEY_USAGE_PREFIX + SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(date)
-                val minutes = statsPrefs.getLong(dateKey, 0)
-                
-                totalMinutes += minutes
-                val hours = minutes / 60
-                val mins = minutes % 60
-                
+                val seconds = statsPrefs.getLong(dateKey, 0)
+
+                totalSeconds += seconds
+                val hours = seconds / 3600
+                val minutes = (seconds % 3600) / 60
+
                 stats.append(dateStr).append(": ")
                 if (hours > 0) stats.append(hours).append("h ")
-                stats.append(mins).append("m\n")
-                
+                stats.append(minutes).append("m\n")
+
                 calendar.add(Calendar.DAY_OF_MONTH, -1)
             }
-            
+
             stats.insert(0, "--- 7 DAY USAGE ---\n")
             stats.append("--- TOTAL: ")
-            val totalHours = totalMinutes / 60
-            val totalMins = totalMinutes % 60
+            val totalHours = totalSeconds / 3600
+            val totalMinutes = (totalSeconds % 3600) / 60
             if (totalHours > 0) stats.append(totalHours).append("h ")
-            stats.append(totalMins).append("m ---")
-            
+            stats.append(totalMinutes).append("m ---")
+
             return stats.toString()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get usage stats", e)
