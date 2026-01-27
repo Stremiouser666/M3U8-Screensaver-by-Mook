@@ -13,39 +13,58 @@ class BandwidthTracker(private val bandwidthPrefs: SharedPreferences) {
     }
 
     private var currentSessionBytes = 0L
-    private var lastBytesRead = 0L
+    private var lastPositionMs = 0L
+    private var lastCheckTimeMs = 0L
     private var currentBitrateKbps = 0
 
     fun trackBandwidth(player: ExoPlayer?) {
         try {
             player?.let { p ->
-                // Get actual bytes loaded from the player's analytics
-                val analytics = p.analyticsCollector
-                val currentBytes = p.bufferedPosition * 1000 // Rough estimate
+                val currentTimeMs = System.currentTimeMillis()
+                val currentPositionMs = p.currentPosition
                 
-                // Try to get actual bitrate from current track selection
+                // Get bitrate directly from video format
                 val videoFormat = p.videoFormat
                 if (videoFormat != null && videoFormat.bitrate > 0) {
                     currentBitrateKbps = videoFormat.bitrate / 1000
                 } else {
-                    // Calculate bitrate from data transfer if format bitrate unavailable
-                    if (currentBytes > lastBytesRead && lastBytesRead > 0) {
-                        val bytesThisCheck = currentBytes - lastBytesRead
-                        // Assuming checks happen every ~1 second, calculate kbps
-                        currentBitrateKbps = ((bytesThisCheck * 8) / 1000).toInt()
+                    // Fallback: estimate from bandwidth meter
+                    val bandwidthEstimate = p.currentTrackSelections?.let {
+                        // ExoPlayer's bandwidth estimate in bytes/sec
+                        try {
+                            val bitrateEstimate = p.currentTrackSelections.getBandwidthEstimate()
+                            if (bitrateEstimate > 0) {
+                                (bitrateEstimate * 8 / 1000).toInt() // Convert to kbps
+                            } else {
+                                0
+                            }
+                        } catch (e: Exception) {
+                            0
+                        }
+                    } ?: 0
+                    
+                    if (bandwidthEstimate > 0) {
+                        currentBitrateKbps = bandwidthEstimate
                     }
                 }
                 
-                if (currentBytes > lastBytesRead) {
-                    val bytesThisCheck = currentBytes - lastBytesRead
-                    currentSessionBytes += bytesThisCheck
-                    lastBytesRead = currentBytes
-
-                    // Save every ~1MB to avoid data loss
-                    if (currentSessionBytes > 0 && currentSessionBytes % 1_000_000 < 100_000) {
-                        saveDailyBandwidth()
+                // Calculate bytes consumed based on playback time
+                if (lastCheckTimeMs > 0 && currentBitrateKbps > 0) {
+                    val elapsedSeconds = (currentTimeMs - lastCheckTimeMs) / 1000.0
+                    if (elapsedSeconds > 0) {
+                        // bytes = (kbps * 1000 / 8) * seconds
+                        val bytesConsumed = ((currentBitrateKbps * 1000.0 / 8.0) * elapsedSeconds).toLong()
+                        currentSessionBytes += bytesConsumed
+                        
+                        // Save every ~1MB to avoid data loss
+                        if (currentSessionBytes > 1_000_000) {
+                            saveDailyBandwidth()
+                        }
                     }
                 }
+                
+                lastCheckTimeMs = currentTimeMs
+                lastPositionMs = currentPositionMs
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to track bandwidth", e)
@@ -63,6 +82,7 @@ class BandwidthTracker(private val bandwidthPrefs: SharedPreferences) {
             val dateKey = KEY_BANDWIDTH_PREFIX + getTodayDateKey()
             val currentTotal = bandwidthPrefs.getLong(dateKey, 0)
             bandwidthPrefs.edit().putLong(dateKey, currentTotal + currentSessionBytes).apply()
+            Log.d(TAG, "Saved ${currentSessionBytes / 1_000_000}MB to daily bandwidth")
             currentSessionBytes = 0L
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save daily bandwidth", e)
@@ -107,7 +127,8 @@ class BandwidthTracker(private val bandwidthPrefs: SharedPreferences) {
 
     fun reset() {
         currentSessionBytes = 0L
-        lastBytesRead = 0L
+        lastPositionMs = 0L
+        lastCheckTimeMs = 0L
         currentBitrateKbps = 0
     }
 
@@ -123,5 +144,16 @@ class BandwidthTracker(private val bandwidthPrefs: SharedPreferences) {
     private fun getTodayDateKey(): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         return sdf.format(Calendar.getInstance().time)
+    }
+}
+
+// Extension function to safely get bandwidth estimate
+private fun androidx.media3.common.Tracks.getBandwidthEstimate(): Long {
+    return try {
+        // Try to get the selected video track's bitrate
+        this.groups.firstOrNull { it.type == androidx.media3.common.C.TRACK_TYPE_VIDEO }
+            ?.getTrackFormat(0)?.bitrate?.toLong() ?: 0L
+    } catch (e: Exception) {
+        0L
     }
 }
