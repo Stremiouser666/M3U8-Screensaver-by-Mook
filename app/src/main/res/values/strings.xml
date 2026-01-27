@@ -63,16 +63,16 @@
     <string name="pref_resume_behavior_summary">Tap to learn how Resume and Random Seek work together</string>
     <string name="pref_resume_behavior_info">How Resume interacts with Random Seek:
 
-• Resume OFF + Random Seek ON
+\n• Resume OFF + Random Seek ON
 Always start at random position
 
-• Resume ON + Random Seek OFF
+\n• Resume ON + Random Seek OFF
 Always resume from last position
 
-• Resume ON + Random Seek ON
+\n• Resume ON + Random Seek ON
 Smart mode: resume if recent, otherwise random
 
-Resume works when:
+\n•Resume works when:
 ✓ Same URL is still set
 ✓ Resume feature enabled</string>
 
@@ -84,10 +84,10 @@ Resume works when:
     <string name="pref_youtube_quality_info_title">Quality Mode Information</string>
     <string name="pref_youtube_quality_info_summary">Tap to learn about quality modes and how they work</string>
     <string name="pref_youtube_quality_info_details">• 360p: Single stream with audio (works on all devices)
-• 480p-4K: Youtube Videos only
-• 360p-4K: Rutube has video and audio
+\n• 480p-4K: Youtube Videos only
+\n• 360p-4K: Rutube has video and audio
 
-• Video-only modes use less bandwidth and work better on older devices. This setting applies to  YouTube videos only.</string>
+\n• Video-only modes use less bandwidth and work better on older devices. This setting applies to  YouTube videos only.</string>
 
     <string name="pref_speed_enabled_title">Enable Speed Control</string>
     <string name="pref_speed_enabled_summary">Adjust playback speed for visual effects</string>
