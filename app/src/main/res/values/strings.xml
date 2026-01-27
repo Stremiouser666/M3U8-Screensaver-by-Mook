@@ -8,7 +8,7 @@
     <string name="string_capitalize">CAPITALIZE_ME</string>
 
     <!-- Main URL Settings -->
-    <string name="pref_video_url_title">Stream URL</string>
+    <string name="pref_video_url_title">Main URL</string>
     <string name="pref_video_url_summary">Enter YouTube, Rutube, or HLS URL (.m3u8)</string>
     <string name="pref_clear_url_title">Clear URL</string>
     <string name="pref_clear_url_summary">Clear current URL (will use default stream if left empty)</string>
