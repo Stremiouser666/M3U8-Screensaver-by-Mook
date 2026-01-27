@@ -48,7 +48,7 @@
     <string name="pref_intro_duration_title">Intro Duration (seconds)</string>
     <string name="pref_intro_duration_summary">How long to play before seeking (1–60 seconds)</string>
 
-    <string name="pref_skip_beginning_enabled_title">Skip Beginning(seconds)</string>
+    <string name="pref_skip_beginning_enabled_title">Skip Beginning</string>
     <string name="pref_skip_beginning_enabled_summary">Skip the first X seconds of the video</string>
     <string name="pref_skip_beginning_duration_title">Skip Duration (seconds)</string>
     <string name="pref_skip_beginning_duration_summary">How many seconds to skip from start (0–600 seconds)</string>
