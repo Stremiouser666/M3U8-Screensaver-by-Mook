@@ -124,13 +124,15 @@ class TestActivity : AppCompatActivity(), SurfaceHolder.Callback, PlayerManager.
             if (!isInitialized) {
                 // Initialize managers here when surface is ready
                 playerManager = PlayerManager(this, this)
-                uiOverlayManager = UIOverlayManager(this, containerLayout, handler)
+                
+                // Get preferences and cache for initialization
+                val prefs = AndroidPreferenceManager.getDefaultSharedPreferences(this)
+                val cache = createPreferenceCache(prefs)
+                
+                uiOverlayManager = UIOverlayManager(this, containerLayout, handler, cache)
                 streamExtractor = StreamExtractor(this)
 
                 // Setup UI overlays
-                val prefs = AndroidPreferenceManager.getDefaultSharedPreferences(this)
-                val cache = createPreferenceCache(prefs)
-
                 if (cache.clockEnabled) {
                     uiOverlayManager?.setupClock(cache)
                 }
@@ -176,7 +178,11 @@ class TestActivity : AppCompatActivity(), SurfaceHolder.Callback, PlayerManager.
             coroutineScope.launch {
                 try {
                     val extractedUrl = withContext(Dispatchers.IO) {
-                        streamExtractor?.extractStreamUrl(url) ?: url
+                        streamExtractor?.extractStreamUrl(
+                            url,
+                            forceRefresh = false,
+                            cacheExpirationSeconds = 3600
+                        ) ?: url
                     }
                     
                     Log.d(TAG, "Starting playback with extracted URL: $extractedUrl")
