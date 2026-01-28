@@ -22,6 +22,30 @@ class TestActivity : AppCompatActivity(), SurfaceHolder.Callback, PlayerManager.
     companion object {
         private const val TAG = "TestActivity"
         private const val DEFAULT_VIDEO_URL = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+        
+        // Helper to create PreferenceCache from SharedPreferences
+        private fun createPreferenceCache(prefs: android.content.SharedPreferences): PreferenceCache {
+            return PreferenceCache(
+                audioEnabled = prefs.getBoolean("audio_enabled", true),
+                audioVolume = prefs.getString("audio_volume", "100")?.toIntOrNull() ?: 100,
+                videoScalingMode = prefs.getString("video_scaling_mode", "fit") ?: "fit",
+                speedEnabled = prefs.getBoolean("speed_enabled", false),
+                playbackSpeed = prefs.getString("playback_speed", "1.0")?.toFloatOrNull() ?: 1.0f,
+                introEnabled = prefs.getBoolean("intro_enabled", false),
+                introDuration = prefs.getString("intro_duration", "0")?.toLongOrNull() ?: 0L,
+                skipBeginningEnabled = prefs.getBoolean("skip_beginning_enabled", false),
+                skipBeginningDuration = prefs.getString("skip_beginning_duration", "0")?.toLongOrNull() ?: 0L,
+                randomSeekEnabled = prefs.getBoolean("random_seek_enabled", false),
+                scheduleEnabled = prefs.getBoolean("schedule_enabled", false),
+                scheduleRandomMode = prefs.getBoolean("schedule_random_mode", false),
+                clockEnabled = prefs.getBoolean("clock_enabled", false),
+                clockPosition = prefs.getString("clock_position", "top_right") ?: "top_right",
+                clockSize = prefs.getString("clock_size", "medium") ?: "medium",
+                timeFormat = prefs.getString("time_format", "12") ?: "12",
+                pixelShiftInterval = prefs.getString("pixel_shift_interval", "0")?.toLongOrNull() ?: 0L,
+                statsEnabled = prefs.getBoolean("stats_enabled", false)
+            )
+        }
     }
 
     private lateinit var playerManager: PlayerManager
@@ -56,7 +80,7 @@ class TestActivity : AppCompatActivity(), SurfaceHolder.Callback, PlayerManager.
 
         // Setup UI overlays using PreferenceCache
         val prefs = AndroidPreferenceManager.getDefaultSharedPreferences(this)
-        val cache = PreferenceCache(prefs)
+        val cache = createPreferenceCache(prefs)
 
         if (cache.clockEnabled) {
             uiOverlayManager.setupClock(cache)
