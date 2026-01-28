@@ -1,5 +1,7 @@
 package com.livescreensaver.tv
 
+import android.app.AlertDialog
+import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -53,7 +55,7 @@ class SettingsActivity : FragmentActivity() {
     }
 
     class PrefsFragment : LeanbackPreferenceFragmentCompat() {
-        
+
         companion object {
             private const val TAG = "SettingsActivity"
             private const val PREFS_NAME = "stream_cache_prefs"
@@ -61,21 +63,21 @@ class SettingsActivity : FragmentActivity() {
             private const val KEY_EXTRACTED_URL = "extracted_url"
             private const val KEY_URL_TYPE = "url_type"
         }
-        
+
         private val httpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .build()
-        
+
         private lateinit var youtubeExtractor: YouTubeStandaloneExtractor
-        
+
         private val handler = Handler(Looper.getMainLooper())
         private var lastProcessedUrl = ""
-        
+
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             val context = preferenceManager.context
             val screen = preferenceManager.createPreferenceScreen(context)
-            
+
             youtubeExtractor = YouTubeStandaloneExtractor(requireContext(), httpClient)
 
             // === MAIN URL SECTION ===
@@ -93,13 +95,13 @@ class SettingsActivity : FragmentActivity() {
                     (preference.text?.takeIf { it.isNotEmpty() } 
                         ?: getString(R.string.pref_video_url_summary)) + suffix
                 }
-                
+
                 setOnPreferenceChangeListener { _, newValue ->
                     val url = newValue.toString().trim()
-                    
+
                     if (url != lastProcessedUrl) {
                         lastProcessedUrl = url
-                        
+
                         when {
                             isRutubeUrl(url) -> {
                                 handler.postDelayed({
@@ -124,7 +126,7 @@ class SettingsActivity : FragmentActivity() {
                 title = getString(R.string.pref_disable_url_title)
                 summary = "Disable main URL from playback"
                 setDefaultValue(false)
-                
+
                 setOnPreferenceChangeListener { _, _ ->
                     true
                 }
@@ -136,17 +138,17 @@ class SettingsActivity : FragmentActivity() {
                 key = "clear_url_button"
                 title = getString(R.string.pref_clear_url_title)
                 summary = getString(R.string.pref_clear_url_summary)
-                
+
                 setOnPreferenceClickListener {
                     videoUrlPref.text = ""
-                    
+
                     val cachePrefs = requireContext().getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                     cachePrefs.edit()
                         .remove(KEY_ORIGINAL_URL)
                         .remove(KEY_EXTRACTED_URL)
                         .remove(KEY_URL_TYPE)
                         .apply()
-                    
+
                     showToast(getString(R.string.toast_url_cleared))
                     true
                 }
@@ -165,7 +167,7 @@ class SettingsActivity : FragmentActivity() {
                 title = getString(R.string.pref_schedule_enabled_title)
                 summary = getString(R.string.pref_schedule_enabled_summary)
                 setDefaultValue(false)
-                
+
                 setOnPreferenceChangeListener { _, newValue ->
                     updateScheduleVisibility(newValue as Boolean)
                     true
@@ -212,17 +214,17 @@ class SettingsActivity : FragmentActivity() {
                         editText.setLines(3)
                     }
                     isVisible = scheduleEnabledPref.isChecked
-                    
+
                     summaryProvider = Preference.SummaryProvider<EditTextPreference> { preference ->
                         val isDisabled = preferenceManager.sharedPreferences?.getBoolean("disable_url_$day", false) ?: false
                         val suffix = if (isDisabled) " (DISABLED)" else ""
                         (preference.text?.takeIf { it.isNotEmpty() } 
                             ?: getString(R.string.pref_url_day_summary)) + suffix
                     }
-                    
+
                     setOnPreferenceChangeListener { _, newValue ->
                         val url = newValue.toString().trim()
-                        
+
                         when {
                             isRutubeUrl(url) -> {
                                 handler.postDelayed({
@@ -239,26 +241,26 @@ class SettingsActivity : FragmentActivity() {
                     }
                 }
                 scheduleCategory.addPreference(dayUrlPref)
-                
+
                 val disableDayPref = SwitchPreference(context).apply {
                     key = "disable_url_$day"
                     title = "Disable ${day.capitalize()}"
                     summary = "Skip this day's URL"
                     setDefaultValue(false)
                     isVisible = scheduleEnabledPref.isChecked
-                    
+
                     setOnPreferenceChangeListener { _, _ ->
                         true
                     }
                 }
                 scheduleCategory.addPreference(disableDayPref)
-                
+
                 val clearDayPref = Preference(context).apply {
                     key = "clear_${day}_button"
                     title = getString(dayClearTitles[index])
                     summary = getString(R.string.toast_day_url_cleared)
                     isVisible = scheduleEnabledPref.isChecked
-                    
+
                     setOnPreferenceClickListener {
                         dayUrlPref.text = ""
                         showToast(getString(R.string.toast_day_url_cleared))
@@ -273,7 +275,7 @@ class SettingsActivity : FragmentActivity() {
                 title = getString(R.string.pref_clear_schedule_title)
                 summary = getString(R.string.pref_clear_schedule_summary)
                 isVisible = scheduleEnabledPref.isChecked
-                
+
                 setOnPreferenceClickListener {
                     days.forEach { day ->
                         preferenceManager.sharedPreferences?.edit()?.remove("url_$day")?.apply()
@@ -296,7 +298,7 @@ class SettingsActivity : FragmentActivity() {
                 title = getString(R.string.pref_intro_enabled_title)
                 summary = getString(R.string.pref_intro_enabled_summary)
                 setDefaultValue(true)
-                
+
                 setOnPreferenceChangeListener { _, newValue ->
                     updateIntroVisibility(newValue as Boolean)
                     true
@@ -308,11 +310,12 @@ class SettingsActivity : FragmentActivity() {
                 key = "intro_duration"
                 title = getString(R.string.pref_intro_duration_title)
                 summary = getString(R.string.pref_intro_duration_summary)
-                setDefaultValue("7")
                 isVisible = introEnabledPref.isChecked
-                
+
                 setOnBindEditTextListener { editText ->
                     editText.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                    editText.setText("")
+                    editText.hint = "Seconds"
                 }
             }
             playbackCategory.addPreference(introDurationPref)
@@ -322,7 +325,7 @@ class SettingsActivity : FragmentActivity() {
                 title = getString(R.string.pref_skip_beginning_enabled_title)
                 summary = getString(R.string.pref_skip_beginning_enabled_summary)
                 setDefaultValue(false)
-                
+
                 setOnPreferenceChangeListener { _, newValue ->
                     updateSkipBeginningVisibility(newValue as Boolean)
                     true
@@ -334,11 +337,12 @@ class SettingsActivity : FragmentActivity() {
                 key = "skip_beginning_duration"
                 title = getString(R.string.pref_skip_beginning_duration_title)
                 summary = getString(R.string.pref_skip_beginning_duration_summary)
-                setDefaultValue("0")
                 isVisible = skipBeginningEnabledPref.isChecked
-                
+
                 setOnBindEditTextListener { editText ->
                     editText.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                    editText.setText("")
+                    editText.hint = "Seconds"
                 }
             }
             playbackCategory.addPreference(skipBeginningDurationPref)
@@ -351,23 +355,12 @@ class SettingsActivity : FragmentActivity() {
             }
             playbackCategory.addPreference(randomSeekEnabledPref)
 
-            val videoScalingPref = ListPreference(context).apply {
-                key = "video_scaling_mode"
-                title = getString(R.string.pref_video_scaling_title)
-                summary = getString(R.string.pref_video_scaling_summary)
-                entries = resources.getStringArray(R.array.video_scaling_entries)
-                entryValues = resources.getStringArray(R.array.video_scaling_values)
-                setDefaultValue("scale_to_fit")
-                summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
-            }
-            playbackCategory.addPreference(videoScalingPref)
-
             val speedEnabledPref = SwitchPreference(context).apply {
                 key = "speed_enabled"
                 title = getString(R.string.pref_speed_enabled_title)
                 summary = getString(R.string.pref_speed_enabled_summary)
                 setDefaultValue(false)
-                
+
                 setOnPreferenceChangeListener { _, newValue ->
                     updateSpeedVisibility(newValue as Boolean)
                     true
@@ -387,6 +380,22 @@ class SettingsActivity : FragmentActivity() {
             }
             playbackCategory.addPreference(playbackSpeedPref)
 
+            val playbackSpeedInfoPref = Preference(context).apply {
+                key = "playback_speed_info"
+                title = getString(R.string.pref_playback_speed_info_title)
+                summary = getString(R.string.pref_playback_speed_info_summary)
+
+                setOnPreferenceClickListener {
+                    AlertDialog.Builder(requireContext())
+                        .setTitle(getString(R.string.pref_playback_speed_info_title))
+                        .setMessage(getString(R.string.pref_playback_speed_info_details))
+                        .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
+                        .show()
+                    true
+                }
+            }
+            playbackCategory.addPreference(playbackSpeedInfoPref)
+
             val resumeEnabledPref = SwitchPreference(context).apply {
                 key = "resume_enabled"
                 title = getString(R.string.pref_resume_enabled_title)
@@ -398,21 +407,45 @@ class SettingsActivity : FragmentActivity() {
             val resumeInfoPref = Preference(context).apply {
                 key = "resume_info"
                 title = getString(R.string.pref_resume_behavior_title)
-                summary = getString(R.string.pref_resume_behavior_info)
-                isSelectable = false
+                summary = getString(R.string.pref_resume_behavior_summary)
+
+                setOnPreferenceClickListener {
+                    AlertDialog.Builder(requireContext())
+                        .setTitle(getString(R.string.pref_resume_behavior_title))
+                        .setMessage(getString(R.string.pref_resume_behavior_info))
+                        .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
+                        .show()
+                    true
+                }
             }
             playbackCategory.addPreference(resumeInfoPref)
 
-            val preferredResolutionPref = ListPreference(context).apply {
-                key = "preferred_resolution"
-                title = getString(R.string.pref_preferred_resolution_title)
-                summary = getString(R.string.pref_preferred_resolution_summary)
-                entries = resources.getStringArray(R.array.resolution_entries)
-                entryValues = resources.getStringArray(R.array.resolution_values)
-                setDefaultValue("auto")
+            val youtubeQualityModePref = ListPreference(context).apply {
+                key = "youtube_quality_mode"
+                title = getString(R.string.pref_youtube_quality_mode_title)
+                summary = getString(R.string.pref_youtube_quality_mode_summary)
+                entries = resources.getStringArray(R.array.youtube_quality_mode_entries)
+                entryValues = resources.getStringArray(R.array.youtube_quality_mode_values)
+                setDefaultValue("360_progressive")
                 summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
             }
-            playbackCategory.addPreference(preferredResolutionPref)
+            playbackCategory.addPreference(youtubeQualityModePref)
+
+            val youtubeQualityInfoPref = Preference(context).apply {
+                key = "youtube_quality_info"
+                title = getString(R.string.pref_youtube_quality_info_title)
+                summary = getString(R.string.pref_youtube_quality_info_summary)
+
+                setOnPreferenceClickListener {
+                    AlertDialog.Builder(requireContext())
+                        .setTitle(getString(R.string.pref_youtube_quality_info_title))
+                        .setMessage(getString(R.string.pref_youtube_quality_info_details))
+                        .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
+                        .show()
+                    true
+                }
+            }
+            playbackCategory.addPreference(youtubeQualityInfoPref)
 
             // === AUDIO SECTION ===
             val audioCategory = PreferenceCategory(context).apply {
@@ -426,7 +459,7 @@ class SettingsActivity : FragmentActivity() {
                 title = getString(R.string.pref_audio_enabled_title)
                 summary = getString(R.string.pref_audio_enabled_summary)
                 setDefaultValue(false)
-                
+
                 setOnPreferenceChangeListener { _, newValue ->
                     updateAudioVisibility(newValue as Boolean)
                     true
@@ -447,7 +480,7 @@ class SettingsActivity : FragmentActivity() {
             audioCategory.addPreference(audioVolumePref)
 
             // === CLOCK OVERLAY SECTION ===
-val clockCategory = PreferenceCategory(context).apply {
+            val clockCategory = PreferenceCategory(context).apply {
                 key = "category_clock"
                 title = getString(R.string.pref_category_clock)
             }
@@ -458,7 +491,7 @@ val clockCategory = PreferenceCategory(context).apply {
                 title = getString(R.string.pref_clock_enabled_title)
                 summary = getString(R.string.pref_clock_enabled_summary)
                 setDefaultValue(false)
-                
+
                 setOnPreferenceChangeListener { _, newValue ->
                     updateClockVisibility(newValue as Boolean)
                     true
@@ -526,7 +559,7 @@ val clockCategory = PreferenceCategory(context).apply {
                 title = getString(R.string.pref_crossfade_enabled_title)
                 summary = getString(R.string.pref_crossfade_enabled_summary)
                 setDefaultValue(false)
-                
+
                 setOnPreferenceChangeListener { _, newValue ->
                     updateCrossfadeVisibility(newValue as Boolean)
                     true
@@ -595,7 +628,7 @@ val clockCategory = PreferenceCategory(context).apply {
                 title = getString(R.string.pref_stats_enabled_title)
                 summary = getString(R.string.pref_stats_enabled_summary)
                 setDefaultValue(false)
-                
+
                 setOnPreferenceChangeListener { _, newValue ->
                     updateStatsVisibility(newValue as Boolean)
                     true
@@ -627,13 +660,26 @@ val clockCategory = PreferenceCategory(context).apply {
             }
             debugCategory.addPreference(statsIntervalPref)
 
+            // === TEST SCREENSAVER BUTTON ===
+            val testScreensaverPref = Preference(context).apply {
+                key = "test_screensaver_button"
+                title = getString(R.string.pref_test_screensaver_title)
+                summary = getString(R.string.pref_test_screensaver_summary)
+
+                setOnPreferenceClickListener {
+                    launchScreensaverTest()
+                    true
+                }
+            }
+            debugCategory.addPreference(testScreensaverPref)
+
             preferenceScreen = screen
         }
 
         private fun updateScheduleVisibility(enabled: Boolean) {
             findPreference<SwitchPreference>("schedule_random_mode")?.isVisible = enabled
             findPreference<Preference>("clear_schedule_button")?.isVisible = enabled
-            
+
             val days = listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
             days.forEach { day ->
                 findPreference<EditTextPreference>("url_$day")?.isVisible = enabled
@@ -673,33 +719,33 @@ val clockCategory = PreferenceCategory(context).apply {
             findPreference<ListPreference>("stats_position")?.isVisible = enabled
             findPreference<ListPreference>("stats_interval")?.isVisible = enabled
         }
-        
+
         private fun isRutubeUrl(url: String): Boolean {
             return url.contains("rutube.ru", ignoreCase = true)
         }
-        
+
         private fun isYouTubeUrl(url: String): Boolean {
             return url.contains("youtube.com", ignoreCase = true) || 
                    url.contains("youtu.be", ignoreCase = true)
         }
-        
+
         private fun autoExtractYouTube(youtubeUrl: String, preference: EditTextPreference) {
             showToast("Extracting YouTube stream...")
-            
+
             CoroutineScope(Dispatchers.Main).launch {
                 try {
                     val result = youtubeExtractor.extractStream(youtubeUrl)
-                    
+
                     if (result.success && result.streamUrl != null) {
                         preference.text = result.streamUrl
-                        
+
                         val cachePrefs = requireContext().getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                         cachePrefs.edit()
                             .putString(KEY_ORIGINAL_URL, youtubeUrl)
                             .putString(KEY_EXTRACTED_URL, result.streamUrl)
                             .putString(KEY_URL_TYPE, "youtube")
                             .apply()
-                        
+
                         showToast("✅ YouTube extracted (${result.quality ?: "Unknown"})")
                         Log.d(TAG, "YouTube URL extracted: ${result.streamUrl}")
                     } else {
@@ -712,24 +758,24 @@ val clockCategory = PreferenceCategory(context).apply {
                 }
             }
         }
-        
+
         private fun autoExtractRutube(rutubeUrl: String, preference: EditTextPreference) {
             showToast(getString(R.string.toast_rutube_extracting))
-            
+
             CoroutineScope(Dispatchers.Main).launch {
                 try {
                     val m3u8Url = extractRutubeUrl(rutubeUrl)
-                    
+
                     if (m3u8Url != null) {
                         preference.text = m3u8Url
-                        
+
                         val cachePrefs = requireContext().getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                         cachePrefs.edit()
                             .putString(KEY_ORIGINAL_URL, rutubeUrl)
                             .putString(KEY_EXTRACTED_URL, m3u8Url)
                             .putString(KEY_URL_TYPE, "rutube")
                             .apply()
-                        
+
                         showToast(getString(R.string.toast_rutube_success))
                         Log.d(TAG, "Rutube URL extracted: $m3u8Url")
                     } else {
@@ -742,7 +788,7 @@ val clockCategory = PreferenceCategory(context).apply {
                 }
             }
         }
-        
+
         private suspend fun extractRutubeUrl(rutubeUrl: String): String? = withContext(Dispatchers.IO) {
             try {
                 val videoId = extractRutubeVideoId(rutubeUrl)
@@ -814,12 +860,12 @@ val clockCategory = PreferenceCategory(context).apply {
                 null
             }
         }
-        
+
         private fun extractRutubeVideoId(url: String): String? {
             val regex = "rutube\\.ru/video/([a-f0-9]+)".toRegex(RegexOption.IGNORE_CASE)
             return regex.find(url)?.groupValues?.get(1)
         }
-        
+
         private fun showToast(message: String) {
             handler.post {
                 Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
@@ -827,6 +873,19 @@ val clockCategory = PreferenceCategory(context).apply {
         }
 
         private fun String.capitalize() = this.replaceFirstChar { it.uppercase() }
+
+        private fun launchScreensaverTest() {
+            try {
+                val intent = Intent(requireContext(), TestActivity::class.java)
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                requireContext().startActivity(intent)
+                
+                showToast(getString(R.string.toast_screensaver_launching))
+                Log.d(TAG, "Test screensaver launched via TestActivity")
+            } catch (e: Exception) {
+                showToast(getString(R.string.toast_screensaver_error))
+                Log.e(TAG, "Error launching test screensaver: ${e.message}", e)
+            }
+        }
     }
 }
-       
