@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    
+
     <!-- Video Scaling Options -->
     <string-array name="video_scaling_entries">
         <item>Scale to Fit</item>
         <item>Scale to Fill (Crop)</item>
         <item>Default</item>
     </string-array>
-    
+
     <string-array name="video_scaling_values">
         <item>scale_to_fit</item>
         <item>scale_to_fill</item>
         <item>default</item>
     </string-array>
-    
+
     <!-- Playback Speed Options -->
     <string-array name="playback_speed_entries">
         <item>0.5x (Half Speed)</item>
@@ -23,7 +23,7 @@
         <item>1.5x (Fast)</item>
         <item>2.0x (Double Speed)</item>
     </string-array>
-    
+
     <string-array name="playback_speed_values">
         <item>0.5</item>
         <item>0.75</item>
@@ -32,7 +32,7 @@
         <item>1.5</item>
         <item>2.0</item>
     </string-array>
-    
+
     <!-- Audio Volume Options -->
     <string-array name="audio_volume_entries">
         <item>10%</item>
@@ -41,7 +41,7 @@
         <item>75%</item>
         <item>100%</item>
     </string-array>
-    
+
     <string-array name="audio_volume_values">
         <item>10</item>
         <item>25</item>
@@ -49,7 +49,7 @@
         <item>75</item>
         <item>100</item>
     </string-array>
-    
+
     <!-- Clock Position Options -->
     <string-array name="position_entries">
         <item>Top Left</item>
@@ -57,14 +57,14 @@
         <item>Bottom Left</item>
         <item>Bottom Right</item>
     </string-array>
-    
+
     <string-array name="position_values">
         <item>top_left</item>
         <item>top_right</item>
         <item>bottom_left</item>
         <item>bottom_right</item>
     </string-array>
-    
+
     <!-- Clock Size Options -->
     <string-array name="clock_size_entries">
         <item>Small - 30pt</item>
@@ -72,25 +72,25 @@
         <item>Large - 72pt</item>
         <item>Extra Large - 96pt</item>
     </string-array>
-    
+
     <string-array name="clock_size_values">
         <item>40</item>
         <item>64</item>
         <item>96</item>
         <item>128</item>
     </string-array>
-    
+
     <!-- Time Format Options -->
     <string-array name="time_format_entries">
         <item>12 Hour (AM/PM)</item>
         <item>24 Hour</item>
     </string-array>
-    
+
     <string-array name="time_format_values">
         <item>12h</item>
         <item>24h</item>
     </string-array>
-    
+
     <!-- Pixel Shift Interval Options -->
     <string-array name="pixel_shift_entries">
         <item>Every 3 minutes</item>
@@ -98,14 +98,14 @@
         <item>Every 10 minutes</item>
         <item>Disabled</item>
     </string-array>
-    
+
     <string-array name="pixel_shift_values">
         <item>180000</item>
         <item>300000</item>
         <item>600000</item>
         <item>0</item>
     </string-array>
-    
+
     <!-- Crossfade Duration Options -->
     <string-array name="crossfade_duration_entries">
         <item>0.5 seconds</item>
@@ -113,14 +113,14 @@
         <item>2 seconds</item>
         <item>3 seconds</item>
     </string-array>
-    
+
     <string-array name="crossfade_duration_values">
         <item>500</item>
         <item>1000</item>
         <item>2000</item>
         <item>3000</item>
     </string-array>
-    
+
     <!-- Loading Animation Options -->
     <string-array name="loading_animation_entries">
         <item>Spinning Dots</item>
@@ -128,25 +128,25 @@
         <item>Progress Bar</item>
         <item>Wave</item>
     </string-array>
-    
+
     <string-array name="loading_animation_values">
         <item>spinning_dots</item>
         <item>pulsing</item>
         <item>progress_bar</item>
         <item>wave</item>
     </string-array>
-    
+
     <!-- Stats Update Interval Options -->
     <string-array name="stats_interval_entries">
         <item>Every 1 second</item>
         <item>Every 5 seconds</item>
     </string-array>
-    
+
     <string-array name="stats_interval_values">
         <item>1000</item>
         <item>5000</item>
     </string-array>
-    
+
     <!-- Preferred Resolution Options -->
     <string-array name="resolution_entries">
         <item>Auto</item>
@@ -167,5 +167,24 @@
         <item>480</item>
         <item>360</item>
     </string-array>
-    
+
+    <!-- YouTube Quality Mode Options -->
+    <string-array name="youtube_quality_mode_entries">
+        <item>360p (Audio + Video)</item>
+        <item>480p (Video Only)</item>
+        <item>720p (Video Only)</item>
+        <item>1080p (Video Only)</item>
+        <item>1440p (Video Only)</item>
+        <item>4K (Video Only)</item>
+    </string-array>
+
+    <string-array name="youtube_quality_mode_values">
+        <item>360p</item>
+        <item>480p</item>
+        <item>720p</item>
+        <item>1080p</item>
+        <item>1440p</item>
+        <item>4k</item>
+    </string-array>
+
 </resources>
