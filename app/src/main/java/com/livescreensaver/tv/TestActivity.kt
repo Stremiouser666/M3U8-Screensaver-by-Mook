@@ -28,43 +28,43 @@ class TestActivity : AppCompatActivity(), SurfaceHolder.Callback, PlayerManager.
     private lateinit var uiOverlayManager: UIOverlayManager
     private lateinit var containerLayout: FrameLayout
     private lateinit var surfaceView: SurfaceView
-    
+
     private val handler = Handler(Looper.getMainLooper())
     private var surfaceReady = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         setupFullscreen()
-        
+
         // Create container layout
         containerLayout = FrameLayout(this)
         setContentView(containerLayout)
-        
+
         // Create surface view
         surfaceView = SurfaceView(this)
         surfaceView.holder.addCallback(this)
-        
+
         containerLayout.addView(surfaceView, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
-        
+
         // Initialize managers
         playerManager = PlayerManager(this, this)
         uiOverlayManager = UIOverlayManager(this, containerLayout, handler)
-        
+
         // Setup UI overlays using PreferenceCache
         val prefs = AndroidPreferenceManager.getDefaultSharedPreferences(this)
-        val cache = PreferenceCache.from(prefs)
-        
+        val cache = PreferenceCache(prefs)
+
         if (cache.clockEnabled) {
             uiOverlayManager.setupClock(cache)
         }
         if (cache.statsEnabled) {
             uiOverlayManager.setupStats(cache)
         }
-        
+
         Log.d(TAG, "Test activity created")
     }
 
@@ -103,24 +103,24 @@ class TestActivity : AppCompatActivity(), SurfaceHolder.Callback, PlayerManager.
     private fun startPlayback(surface: android.view.Surface) {
         try {
             playerManager.initialize(surface)
-            
+
             // Get URL from preferences
             val prefs = AndroidPreferenceManager.getDefaultSharedPreferences(this)
             val url = prefs.getString("video_url", DEFAULT_VIDEO_URL) ?: DEFAULT_VIDEO_URL
-            
+
             Log.d(TAG, "Starting playback: $url")
             playerManager.playStream(url)
-            
+
             // Set volume
             val audioEnabled = prefs.getBoolean("audio_enabled", true)
             val audioVolume = prefs.getString("audio_volume", "100")?.toIntOrNull() ?: 100
-            
+
             if (audioEnabled) {
                 playerManager.setVolume(audioVolume / 100f)
             } else {
                 playerManager.setVolume(0f)
             }
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "Error starting playback", e)
             finish()
