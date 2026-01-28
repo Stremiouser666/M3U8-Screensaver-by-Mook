@@ -1,6 +1,5 @@
 package com.livescreensaver.tv
 
-import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -16,10 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.PreferenceManager
 
 /**
- * TestActivity - Allows testing screensaver functionality without waiting for system idle
- * 
- * This activity mimics the behavior of LiveScreensaverService but runs as a normal activity
- * that can be launched on demand.
+ * TestActivity - Launch screensaver for testing without waiting for system idle
  */
 class TestActivity : AppCompatActivity(), SurfaceHolder.Callback, PlayerManager.PlayerEventListener {
 
@@ -32,31 +28,20 @@ class TestActivity : AppCompatActivity(), SurfaceHolder.Callback, PlayerManager.
     private lateinit var uiOverlayManager: UIOverlayManager
     private lateinit var containerLayout: FrameLayout
     private lateinit var surfaceView: SurfaceView
-    private lateinit var preferences: SharedPreferences
-    private lateinit var preferenceManager: AppPreferenceManager
-    private lateinit var scheduleManager: ScheduleManager
     
     private val handler = Handler(Looper.getMainLooper())
-    private var prefCache: PreferenceCache? = null
     private var surfaceReady = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Setup fullscreen
         setupFullscreen()
-        
-        // Initialize preferences
-        preferences = PreferenceManager.getDefaultSharedPreferences(this)
-        preferenceManager = AppPreferenceManager(this)
-        scheduleManager = ScheduleManager(this)
-        prefCache = PreferenceCache.from(preferences)
         
         // Create container layout
         containerLayout = FrameLayout(this)
         setContentView(containerLayout)
         
-        // Create surface view for video playback
+        // Create surface view
         surfaceView = SurfaceView(this)
         surfaceView.holder.addCallback(this)
         
@@ -69,14 +54,26 @@ class TestActivity : AppCompatActivity(), SurfaceHolder.Callback, PlayerManager.
         playerManager = PlayerManager(this, this)
         uiOverlayManager = UIOverlayManager(this, containerLayout, handler)
         
-        // Setup overlays
-        prefCache?.let { cache ->
-            if (cache.clockEnabled) {
-                uiOverlayManager.setupClock(cache)
-            }
-            if (cache.statsEnabled) {
-                uiOverlayManager.setupStats(cache)
-            }
+        // Setup UI overlays
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val cache = com.livescreensaver.tv.PreferenceCache(
+            clockEnabled = prefs.getBoolean("clock_enabled", true),
+            clockPosition = prefs.getString("clock_position", "top_right") ?: "top_right",
+            clockSize = prefs.getString("clock_size", "64")?.toIntOrNull() ?: 64,
+            timeFormat = prefs.getString("time_format", "12h") ?: "12h",
+            pixelShiftInterval = prefs.getString("pixel_shift_interval", "300000")?.toLongOrNull() ?: 300000L,
+            statsEnabled = prefs.getBoolean("stats_enabled", false),
+            statsPosition = prefs.getString("stats_position", "top_left") ?: "top_left",
+            statsInterval = prefs.getString("stats_interval", "1000")?.toLongOrNull() ?: 1000L,
+            audioEnabled = prefs.getBoolean("audio_enabled", true),
+            audioVolume = prefs.getString("audio_volume", "100")?.toIntOrNull() ?: 100
+        )
+        
+        if (cache.clockEnabled) {
+            uiOverlayManager.setupClock(cache)
+        }
+        if (cache.statsEnabled) {
+            uiOverlayManager.setupStats(cache)
         }
         
         Log.d(TAG, "Test activity created")
@@ -106,9 +103,7 @@ class TestActivity : AppCompatActivity(), SurfaceHolder.Callback, PlayerManager.
         startPlayback(holder.surface)
     }
 
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        Log.d(TAG, "Surface changed: ${width}x${height}")
-    }
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         Log.d(TAG, "Surface destroyed")
@@ -120,20 +115,21 @@ class TestActivity : AppCompatActivity(), SurfaceHolder.Callback, PlayerManager.
         try {
             playerManager.initialize(surface)
             
-            // Get URL from preferences or use default
-            val url = scheduleManager.getCurrentUrl() ?: DEFAULT_VIDEO_URL
+            // Get URL from preferences
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+            val url = prefs.getString("video_url", DEFAULT_VIDEO_URL) ?: DEFAULT_VIDEO_URL
             
             Log.d(TAG, "Starting playback: $url")
             playerManager.playStream(url)
             
             // Set volume
-            prefCache?.let { cache ->
-                if (cache.audioEnabled) {
-                    val volume = cache.audioVolume / 100f
-                    playerManager.setVolume(volume)
-                } else {
-                    playerManager.setVolume(0f)
-                }
+            val audioEnabled = prefs.getBoolean("audio_enabled", true)
+            val audioVolume = prefs.getString("audio_volume", "100")?.toIntOrNull() ?: 100
+            
+            if (audioEnabled) {
+                playerManager.setVolume(audioVolume / 100f)
+            } else {
+                playerManager.setVolume(0f)
             }
             
         } catch (e: Exception) {
