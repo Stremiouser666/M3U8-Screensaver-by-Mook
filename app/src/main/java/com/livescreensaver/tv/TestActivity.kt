@@ -1,10 +1,15 @@
 package com.livescreensaver.tv
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 
 /**
@@ -13,10 +18,13 @@ import androidx.appcompat.app.AppCompatActivity
  * This activity mimics the behavior of LiveScreensaverService but runs as a normal activity
  * that can be launched on demand. It uses the same PlayerManager and rendering logic.
  */
-class TestActivity : AppCompatActivity() {
+class TestActivity : AppCompatActivity(), PlayerManager.PlayerEventListener {
 
     private lateinit var playerManager: PlayerManager
     private lateinit var uiOverlayManager: UIOverlayManager
+    private lateinit var containerLayout: FrameLayout
+    private lateinit var surfaceView: SurfaceView
+    private val handler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -24,18 +32,38 @@ class TestActivity : AppCompatActivity() {
         // Make fullscreen and keep screen on
         setupFullscreen()
         
+        // Create container layout
+        containerLayout = FrameLayout(this)
+        setContentView(containerLayout)
+        
+        // Create surface view for video playback
+        surfaceView = SurfaceView(this).apply {
+            holder.addCallback(object : SurfaceHolder.Callback {
+                override fun surfaceCreated(holder: SurfaceHolder) {
+                    initializePlayback(holder.surface)
+                }
+                
+                override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+                override fun surfaceDestroyed(holder: SurfaceHolder) {
+                    playerManager.release()
+                }
+            })
+        }
+        
+        containerLayout.addView(surfaceView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        
         // Initialize managers
-        playerManager = PlayerManager(this)
-        uiOverlayManager = UIOverlayManager(this)
-        
-        // Set content view to player view
-        setContentView(playerManager.getPlayerView())
-        
-        // Add UI overlays on top
-        uiOverlayManager.attachToWindow(window)
-        
-        // Start playback
+        playerManager = PlayerManager(this, this)
+        uiOverlayManager = UIOverlayManager(this, containerLayout, handler)
+    }
+
+    private fun initializePlayback(surface: android.view.Surface) {
+        playerManager.initialize(surface)
         playerManager.startPlayback()
+        uiOverlayManager.start(playerManager.getExoPlayer())
     }
 
     private fun setupFullscreen() {
@@ -67,13 +95,24 @@ class TestActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        playerManager.pausePlayback()
+        playerManager.pause()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        playerManager.cleanup()
-        uiOverlayManager.cleanup()
+        uiOverlayManager.stop()
+        playerManager.release()
+        handler.removeCallbacksAndMessages(null)
+    }
+
+    // PlayerEventListener implementation
+    override fun onPlaybackStateChanged(state: Int) {
+        // Handle playback state changes if needed
+    }
+
+    override fun onPlayerError(error: Exception) {
+        // Handle errors if needed
+        finish()
     }
 
     // Exit on any key press
