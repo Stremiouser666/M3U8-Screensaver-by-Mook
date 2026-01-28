@@ -53,7 +53,7 @@
 
         <activity
             android:name=".TestActivity"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
             android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden"
             android:exported="false" />
