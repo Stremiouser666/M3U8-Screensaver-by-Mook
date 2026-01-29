@@ -129,8 +129,8 @@ class TestActivity : AppCompatActivity(), SurfaceHolder.Callback, PlayerManager.
                 val prefs = AndroidPreferenceManager.getDefaultSharedPreferences(this)
                 val cache = createPreferenceCache(prefs)
                 
-                uiOverlayManager = UIOverlayManager(this, containerLayout, handler, cache)
-                streamExtractor = StreamExtractor(this)
+                uiOverlayManager = UIOverlayManager(this, containerLayout, handler)
+                streamExtractor = StreamExtractor(this, cache)
 
                 // Setup UI overlays
                 if (cache.clockEnabled) {
