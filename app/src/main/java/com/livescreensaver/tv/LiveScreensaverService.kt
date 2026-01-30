@@ -317,7 +317,11 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
     }
 
     private fun handlePlayingChanged(isPlaying: Boolean) {
-        uiOverlayManager.updatePlayingState(isPlaying)
+        if (isPlaying) {
+            stallDetectionTime = 0
+        } else if (playerManager.getPlayer()?.playbackState == Player.STATE_READY && stallDetectionTime == 0L) {
+            stallDetectionTime = System.currentTimeMillis()
+        }
     }
 
     private fun loadStream(sourceUrl: String) {
