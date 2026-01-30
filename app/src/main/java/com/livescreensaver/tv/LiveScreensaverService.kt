@@ -64,6 +64,10 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
     private var isRetrying = false
     private var activeExtractionJob: Job? = null
     private var hasProcessedPlayback = false
+    
+    // NEW: Loading lock variables
+    private var isLoadingStream = false
+    private var loadStreamJob: Job? = null
 
     private val stallCheckRunnable = object : Runnable {
         override fun run() {
@@ -204,15 +208,13 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
         containerLayout?.let { container ->
             uiOverlayManager = UIOverlayManager(this, container, handler)
 
-            prefCache?.let { cache ->
-                if (cache.clockEnabled) {
-                    uiOverlayManager.setupClock(cache)
-                }
+            if (prefCache?.statsEnabled == true) {
+                uiOverlayManager.showStats()
+                handler.post(statsUpdateRunnable)
+            }
 
-                if (cache.statsEnabled) {
-                    uiOverlayManager.setupStats(cache)
-                    handler.postDelayed(statsUpdateRunnable, cache.statsInterval)
-                }
+            if (prefCache?.pixelShiftEnabled == true) {
+                handler.post(uiOverlayManager.getPixelShiftRunnable())
             }
         }
 
@@ -220,8 +222,8 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
-        FileLogger.log("🖥️ Surface created - surfaceReady = true")
         surfaceReady = true
+        FileLogger.log("✅ Surface created and ready", TAG)
         initializePlayer()
     }
 
@@ -229,113 +231,118 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         surfaceReady = false
-        releasePlayer()
+        FileLogger.log("⚠️ Surface destroyed", TAG)
     }
 
     private fun initializePlayer() {
-        FileLogger.log("🎮 initializePlayer() called - surfaceReady=$surfaceReady, playerExists=${::playerManager.isInitialized}")
-
-        if (!surfaceReady || ::playerManager.isInitialized) return
+        if (!surfaceReady) {
+            FileLogger.log("⏳ Surface not ready yet", TAG)
+            return
+        }
 
         try {
-            FileLogger.log("⏳ Starting player initialization...")
-            showLoadingAnimation()
+            val surface = surfaceView?.holder?.surface
+            if (surface == null || !surface.isValid) {
+                FileLogger.log("⚠️ Surface invalid", TAG)
+                return
+            }
 
-            val videoUrl = getVideoUrl()
-            FileLogger.log("📺 Video URL to load: $videoUrl")
+            playerManager = PlayerManager(this, object : PlayerManager.PlayerEventListener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    handlePlaybackStateChange(state)
+                }
 
-            playerManager = PlayerManager(
-                context = this,
-                eventListener = object : PlayerManager.PlayerEventListener {
-                    override fun onPlaybackStateChanged(state: Int) {
-                        when (state) {
-                            Player.STATE_READY -> handlePlayerReady()
-                            Player.STATE_IDLE, Player.STATE_ENDED -> {
-                                if (stallDetectionTime == 0L) {
-                                    stallDetectionTime = System.currentTimeMillis()
-                                }
-                            }
-                        }
-                        
-                        val isPlaying = state == Player.STATE_READY && playerManager.getPlayer()?.playWhenReady == true
-                        handlePlayingChanged(isPlaying)
-                    }
-                    
-                    override fun onPlayerError(error: Exception) {
-                        hideLoadingAnimation()
-                        handlePlaybackFailure()
+                override fun onPlayerError(error: Exception) {
+                    FileLogger.logError("Player error", error, TAG)
+                    handlePlaybackFailure()
+                }
+            })
+
+            playerManager.initialize(surface)
+            FileLogger.log("✅ PlayerManager initialized", TAG)
+
+            val savedUrl = resumeManager.getSavedUrl()
+            if (savedUrl != null) {
+                FileLogger.log("📌 Resuming from saved URL", TAG)
+                currentSourceUrl = savedUrl
+                loadStream(savedUrl)
+            } else {
+                val url = scheduleManager.getCurrentVideoUrl()
+                currentSourceUrl = url
+                FileLogger.log("🎬 Loading scheduled URL: $url", TAG)
+                loadStream(url)
+            }
+        } catch (e: Exception) {
+            FileLogger.logError("Failed to initialize player", e, TAG)
+        }
+    }
+
+    private fun handlePlaybackStateChange(state: Int) {
+        val stateName = when (state) {
+            Player.STATE_IDLE -> "IDLE"
+            Player.STATE_BUFFERING -> "BUFFERING"
+            Player.STATE_READY -> {
+                stallDetectionTime = 0
+                retryCount = 0
+                "READY"
+            }
+            Player.STATE_ENDED -> "ENDED"
+            else -> "UNKNOWN"
+        }
+
+        FileLogger.log("🎬 Playback state: $stateName", TAG)
+
+        when (state) {
+            Player.STATE_BUFFERING -> {
+                if (!hasProcessedPlayback) {
+                    stallDetectionTime = System.currentTimeMillis()
+                    handler.postDelayed(stallCheckRunnable, STALL_CHECK_INTERVAL_MS)
+                }
+            }
+            Player.STATE_READY -> {
+                hasProcessedPlayback = true
+                handler.removeCallbacks(stallCheckRunnable)
+                
+                if (prefCache?.resumeEnabled == true) {
+                    val savedPosition = resumeManager.getSavedPosition(currentSourceUrl)
+                    if (savedPosition > 0) {
+                        playerManager.seekTo(savedPosition)
+                        FileLogger.log("⏩ Resumed from position: ${savedPosition}ms", TAG)
                     }
                 }
-            )
-
-            // Initialize player with surface
-            val surface = surfaceView?.holder?.surface
-            if (surface != null) {
-                playerManager.initialize(surface)
-                loadStream(videoUrl)
-                handler.post(stallCheckRunnable)
-            } else {
-                Log.e(TAG, "Surface is null, cannot initialize player")
             }
-
-        } catch (e: Exception) {
-            hideLoadingAnimation()
-            Log.e(TAG, "Player initialization failed", e)
-            handler.postDelayed({ initializePlayer() }, 5000)
-        }
-    }
-
-    private fun handlePlayerReady() {
-        hideLoadingAnimation()
-        if (!hasProcessedPlayback) {
-            stallDetectionTime = 0
-            retryCount = 0
-
-            val cache = prefCache ?: return
-            val player = playerManager.getPlayer() ?: return
-            val duration = player.duration
-            val skipDuration = if (cache.skipBeginningEnabled) cache.skipBeginningDuration else 0L
-
-            val resumedPosition = resumeManager.attemptResume(cache, currentSourceUrl, duration, skipDuration)
-
-            // Apply skip/resume logic
-            if (resumedPosition != null && resumedPosition > 0) {
-                player.seekTo(resumedPosition)
+            Player.STATE_ENDED -> {
+                FileLogger.log("🔄 Stream ended - restarting", TAG)
+                currentSourceUrl?.let { loadStream(it) }
             }
-            
-            hasProcessedPlayback = true
         }
     }
 
-    private fun handlePlayingChanged(isPlaying: Boolean) {
-        if (isPlaying) {
-            stallDetectionTime = 0
-        } else if (playerManager.getPlayer()?.playbackState == Player.STATE_READY && stallDetectionTime == 0L) {
-            stallDetectionTime = System.currentTimeMillis()
+    private fun loadStream(url: String) {
+        // Prevent multiple simultaneous loads
+        if (isLoadingStream) {
+            FileLogger.log("⚠️ Already loading, ignoring duplicate", TAG)
+            return
         }
-    }
 
-    private fun getVideoUrl(): String {
-        val cache = prefCache ?: return preferences.getString(PREF_VIDEO_URL, DEFAULT_VIDEO_URL) ?: DEFAULT_VIDEO_URL
-        return scheduleManager.getScheduledUrl(cache)
-    }
+        isLoadingStream = true
+        FileLogger.log("🔄 loadStream() START", TAG)
+        
+        showLoadingAnimation()
 
-    private fun loadStream(sourceUrl: String) {
-        currentSourceUrl = sourceUrl
-        FileLogger.log("🔄 loadStream() called with: $sourceUrl", TAG)
-        Log.d(TAG, "🔄 Loading stream: $sourceUrl")
-
-        activeExtractionJob?.cancel()
-
-        activeExtractionJob = extractionScope.launch {
+        loadStreamJob = serviceScope.launch {
             try {
-                FileLogger.log("🚀 Coroutine started for stream loading", TAG)
+                activeExtractionJob?.cancel()
+
+                val sourceUrl = url.ifEmpty { DEFAULT_VIDEO_URL }
+                currentSourceUrl = sourceUrl
+
+                FileLogger.log("📥 Starting stream load: $sourceUrl", TAG)
 
                 val streamUrl = withTimeout(EXTRACTION_TIMEOUT_MS) {
                     if (streamExtractor.needsExtraction(sourceUrl)) {
-                        FileLogger.log("✅ Needs extraction: true", TAG)
                         val cachedUrl = streamExtractor.getCachedUrl()
-                        if (cachedUrl != null && cachedUrl.isNotEmpty()) {
+                        if (cachedUrl != null) {
                             FileLogger.log("✅ Trying cached extracted URL first: $cachedUrl", TAG)
                             Log.d(TAG, "✅ Trying cached extracted URL first")
                             cachedUrl
@@ -375,6 +382,9 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
                 withContext(Dispatchers.Main) {
                     playStream(DEFAULT_VIDEO_URL)
                 }
+            } finally {
+                isLoadingStream = false
+                FileLogger.log("🔄 loadStream() COMPLETE", TAG)
             }
         }
     }
@@ -433,7 +443,7 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
         isRetrying = false
         hasProcessedPlayback = false
         playerManager.release()
-        
+
         // Reinitialize player for retry
         val surface = surfaceView?.holder?.surface
         if (surface != null) {
@@ -532,6 +542,8 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
         super.onDetachedFromWindow()
         try {
             serviceScope.cancel()
+            extractionScope.cancel()
+            loadStreamJob?.cancel()
             releasePlayer()
             if (::uiOverlayManager.isInitialized) {
                 uiOverlayManager.cleanup()
