@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.media3.common.Player
 import androidx.preference.PreferenceManager
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import kotlinx.coroutines.*
 
 class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
@@ -35,6 +36,7 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
 
     private var prefCache: PreferenceCache? = null
     private var surfaceView: SurfaceView? = null
+    private var youtubePlayerView: YouTubePlayerView? = null
     private var containerLayout: FrameLayout? = null
     private var loadingOverlay: LoadingAnimationOverlay? = null
     private var loadingTextView: TextView? = null
@@ -224,6 +226,16 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
 
+        // YouTube Player View (NEW - Step 3)
+        youtubePlayerView = YouTubePlayerView(this).apply {
+            visibility = android.view.View.GONE  // Hidden by default
+        }
+        lifecycle.addObserver(youtubePlayerView!!)  // IMPORTANT for lifecycle management
+        containerLayout?.addView(youtubePlayerView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+
         containerLayout?.let { container ->
             uiOverlayManager = UIOverlayManager(this, container, handler)
 
@@ -300,7 +312,8 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
                         hideLoadingAnimation()
                         handlePlaybackFailure()
                     }
-                }
+                },
+                youtubePlayerView = youtubePlayerView!!  // NEW: Pass the YouTube player view
             )
 
             val surface = surfaceView?.holder?.surface
@@ -604,6 +617,7 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
             if (::uiOverlayManager.isInitialized) {
                 uiOverlayManager.cleanup()
             }
+            youtubePlayerView?.release()  // NEW: Release YouTube player
             prefCache = null
         } catch (e: Exception) {
             Log.e(TAG, "Error in onDetachedFromWindow", e)
