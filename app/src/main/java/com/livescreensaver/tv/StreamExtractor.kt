@@ -126,6 +126,7 @@ class StreamExtractor(
             // Route based on quality mode
             if (qualityMode == "360_progressive") {
                 // Try standalone extractor for 360p progressive (itag=18 with direct URL)
+                // Do NOT fall back to embed player for 360p
                 FileLogger.log("🔧 Trying standalone extractor for 360p progressive...", TAG)
                 try {
                     val standaloneResult = standaloneExtractor.extractStream(sourceUrl)
@@ -136,18 +137,19 @@ class StreamExtractor(
                         saveToCache(sourceUrl, standaloneResult.streamUrl, "youtube")
                         return@withContext standaloneResult.streamUrl
                     } else {
-                        FileLogger.log("⚠️ Standalone extractor failed for 360p: ${standaloneResult.errorMessage}", TAG)
-                        Log.w(TAG, "⚠️ Standalone extractor failed for 360p: ${standaloneResult.errorMessage}")
-                        // Fall through to embed extractor
+                        FileLogger.log("❌ Standalone extractor failed for 360p: ${standaloneResult.errorMessage}", TAG)
+                        FileLogger.log("❌ 360p mode does not use embed player - returning null", TAG)
+                        Log.e(TAG, "❌ 360p extraction failed - no fallback to embed player")
+                        return@withContext null
                     }
                 } catch (e: Exception) {
                     FileLogger.logError("Standalone extractor exception", e, TAG)
                     Log.e(TAG, "❌ Standalone extractor exception", e)
-                    // Fall through to embed extractor
+                    return@withContext null
                 }
             }
 
-            // For 480p+ OR if 360p standalone failed, use embed player
+            // For 480p+ ONLY, use embed player
             FileLogger.log("🔧 Using YouTube Embed Player for $qualityMode...", TAG)
             Log.d(TAG, "🔧 Using YouTube Embed Player for $qualityMode...")
             
