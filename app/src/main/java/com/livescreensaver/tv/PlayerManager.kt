@@ -114,7 +114,6 @@ class PlayerManager(
             .autoplay(1)  // Auto-play without requiring click
             .rel(0)       // Don't show related videos at end
             .ivLoadPolicy(3)  // Hide video annotations
-            .modestbranding(1)  // Hide YouTube logo
             .build()
 
         youtubePlayerView.enableAutomaticInitialization = false
