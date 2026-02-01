@@ -34,7 +34,7 @@ class StreamExtractor(
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    private val standaloneExtractor = YouTubeStandaloneExtractor(context, httpClient)
+    private val standaloneExtractor = YouTubeStandaloneExtractor(context)
     private val embedExtractor = YouTubeEmbedExtractor()
 
     fun needsExtraction(url: String): Boolean {
