@@ -148,13 +148,15 @@ class UIOverlayManager(
     }
 
     fun updateStats(player: ExoPlayer?, usageStats: String, bandwidthStats: String, bandwidthTracker: BandwidthTracker? = null) {
+        statsBuilder.clear()
+        statsBuilder.setLength(0)
+
+        // Always show usage and bandwidth stats (works for both WebView and ExoPlayer)
+        statsBuilder.append(usageStats).append("\n\n")
+        statsBuilder.append(bandwidthStats).append("\n\n")
+
+        // Add ExoPlayer-specific stats only if player is available (Rutube, etc.)
         player?.let { p ->
-            statsBuilder.clear()
-            statsBuilder.setLength(0)
-
-            statsBuilder.append(usageStats).append("\n\n")
-            statsBuilder.append(bandwidthStats).append("\n\n")
-
             p.videoFormat?.let { format ->
                 statsBuilder.append("Resolution: ")
                     .append(format.width)
@@ -226,9 +228,14 @@ class UIOverlayManager(
                 else -> "UNKNOWN"
             }
             statsBuilder.append(state)
-
-            statsTextView?.text = statsBuilder.toString()
+        } ?: run {
+            // No ExoPlayer (using WebView for YouTube)
+            statsBuilder.append("Player: WebView (YouTube)\n")
+            statsBuilder.append("Resolution: YouTube Adaptive\n")
+            statsBuilder.append("Quality: Auto-selected by YouTube")
         }
+
+        statsTextView?.text = statsBuilder.toString()
     }
 
     private fun shiftClock() {
