@@ -3,6 +3,7 @@ package com.livescreensaver.tv
 import android.content.Context
 import android.view.Surface
 import android.view.View
+import android.webkit.WebView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -11,19 +12,14 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.datasource.DefaultHttpDataSource
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import kotlin.random.Random
 
 class PlayerManager(
     private val context: Context,
     private val eventListener: PlayerEventListener,
-    private val youtubePlayerView: YouTubePlayerView
+    private val webView: WebView  // WebView for YouTube proxy
 ) {
     private var exoPlayer: ExoPlayer? = null
-    private var youtubePlayer: YouTubePlayer? = null
     private var streamStartTime: Long = 0
 
     // Playback preferences
@@ -39,11 +35,7 @@ class PlayerManager(
     private var currentResolution: Int = 1080
 
     // Track which player is active
-    private var isUsingYouTubePlayer = false
-    
-    // Track video IDs for YouTube player
-    private var currentVideoId: String? = null
-    private var pendingVideoId: String? = null
+    private var isUsingWebView = false
 
     private val youtubeDataSourceFactory = DefaultHttpDataSource.Factory()
         .setConnectTimeoutMs(15000)
@@ -58,9 +50,7 @@ class PlayerManager(
     fun initialize(surface: Surface) {
         release()
         hasAppliedInitialSeek = false
-        isUsingYouTubePlayer = false
-        currentVideoId = null
-        pendingVideoId = null
+        isUsingWebView = false
 
         // Initialize ExoPlayer (for Rutube and 360p YouTube)
         val speedMultiplier = playbackSpeed.coerceAtLeast(1.0f)
@@ -94,7 +84,7 @@ class PlayerManager(
                             FileLogger.log("⚡ PLAYBACK STARTED in ${latency}ms", "PlayerManager")
                             streamStartTime = 0
 
-                            if (!hasAppliedInitialSeek && !isUsingYouTubePlayer) {
+                            if (!hasAppliedInitialSeek && !isUsingWebView) {
                                 handleInitialPlayback()
                                 hasAppliedInitialSeek = true
                             }
@@ -108,69 +98,12 @@ class PlayerManager(
                 })
             }
 
-        // Initialize YouTube Player with auto-play configuration
-        val iFramePlayerOptions = IFramePlayerOptions.Builder()
-            .controls(0)  // Hide all controls
-            .autoplay(1)  // Auto-play without requiring click
-            .rel(0)       // Don't show related videos at end
-            .ivLoadPolicy(3)  // Hide video annotations
-            .build()
-
-        youtubePlayerView.enableAutomaticInitialization = false
-        youtubePlayerView.initialize(object : AbstractYouTubePlayerListener() {
-            override fun onReady(player: YouTubePlayer) {
-                youtubePlayer = player
-                
-                FileLogger.log("✅ YouTube Player ready", "PlayerManager")
-                
-                // If there's a pending video to load, load it now
-                if (pendingVideoId != null) {
-                    FileLogger.log("▶️ Loading pending video: $pendingVideoId", "PlayerManager")
-                    currentVideoId = pendingVideoId
-                    player.loadVideo(pendingVideoId!!, 0f)
-                    if (!audioEnabled) {
-                        player.mute()
-                    } else {
-                        player.unMute()
-                    }
-                    pendingVideoId = null
-                }
-            }
-
-            override fun onStateChange(
-                player: YouTubePlayer,
-                state: com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants.PlayerState
-            ) {
-                when (state) {
-                    com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants.PlayerState.PLAYING -> {
-                        if (streamStartTime > 0) {
-                            val latency = System.currentTimeMillis() - streamStartTime
-                            FileLogger.log("⚡ YOUTUBE PLAYBACK STARTED in ${latency}ms", "PlayerManager")
-                            streamStartTime = 0
-                        }
-                        eventListener.onPlaybackStateChanged(Player.STATE_READY)
-                    }
-                    com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants.PlayerState.ENDED -> {
-                        // Loop the video (screensaver behavior)
-                        if (currentVideoId != null) {
-                            FileLogger.log("🔁 Video ended, looping: $currentVideoId", "PlayerManager")
-                            player.loadVideo(currentVideoId!!, 0f)
-                        }
-                    }
-                    else -> {
-                        // Other states (buffering, paused, etc.)
-                    }
-                }
-            }
-
-            override fun onError(
-                player: YouTubePlayer,
-                error: com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants.PlayerError
-            ) {
-                FileLogger.log("❌ YouTube Player error: $error", "PlayerManager")
-                eventListener.onPlayerError(Exception("YouTube Player error: $error"))
-            }
-        }, iFramePlayerOptions)
+        // Configure WebView for YouTube proxy
+        webView.settings.apply {
+            javaScriptEnabled = true
+            mediaPlaybackRequiresUserGesture = false
+            domStorageEnabled = true
+        }
     }
 
     private fun applyBitrateLimits() {
@@ -232,14 +165,6 @@ class PlayerManager(
             }
         }
 
-        youtubePlayer?.let { player ->
-            if (!audioEnabled) {
-                player.mute()
-            } else {
-                player.unMute()
-            }
-        }
-
         FileLogger.log("⚙️ Preferences updated - Speed: $playbackSpeed, Audio: ${if (audioEnabled) "${(audioVolume * 100).toInt()}%" else "OFF"}, RandomSeek: $randomSeekEnabled, Intro: $introEnabled (${introDurationMs}ms), Skip: $skipBeginningEnabled (${skipBeginningDurationMs}ms)", "PlayerManager")
     }
 
@@ -288,39 +213,43 @@ class PlayerManager(
     fun playStream(url: String) {
         FileLogger.log("🎬 playStream() called with: ${url.take(100)}...", "PlayerManager")
 
-        if (url.startsWith("youtube_embed://")) {
-            playWithYouTubePlayer(url)
+        if (url.startsWith("webview://")) {
+            playWithWebView(url)
         } else {
             playWithExoPlayer(url)
         }
     }
 
-    private fun playWithYouTubePlayer(embedUrl: String) {
-        val videoId = embedUrl.removePrefix("youtube_embed://")
+    private fun playWithWebView(embedUrl: String) {
+        val proxyUrl = embedUrl.removePrefix("webview://")
         
-        FileLogger.log("🎬 Loading YouTube video in embed player: $videoId", "PlayerManager")
+        // Add audio parameter based on preference
+        val finalUrl = if (audioEnabled) {
+            proxyUrl.replace("&mute=0", "&mute=0")
+        } else {
+            proxyUrl.replace("&mute=0", "&mute=1")
+        }
+        
+        FileLogger.log("🎬 Loading YouTube video in WebView proxy: ${finalUrl.take(100)}...", "PlayerManager")
         streamStartTime = System.currentTimeMillis()
-        isUsingYouTubePlayer = true
-        currentVideoId = videoId
+        isUsingWebView = true
 
-        // Hide ExoPlayer, show YouTube player
-        youtubePlayerView.visibility = View.VISIBLE
+        // Hide ExoPlayer, show WebView
+        webView.visibility = View.VISIBLE
         exoPlayer?.pause()
 
-        // Load video
-        youtubePlayer?.let { player ->
-            player.loadVideo(videoId, 0f)
-            
-            if (!audioEnabled) {
-                player.mute()
-            } else {
-                player.unMute()
+        // Load URL - auto-plays because of autoplay=1 parameter
+        webView.loadUrl(finalUrl)
+        
+        // Simulate playback started for event listener
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (streamStartTime > 0) {
+                val latency = System.currentTimeMillis() - streamStartTime
+                FileLogger.log("⚡ WEBVIEW PLAYBACK STARTED in ${latency}ms", "PlayerManager")
+                streamStartTime = 0
+                eventListener.onPlaybackStateChanged(Player.STATE_READY)
             }
-        } ?: run {
-            // Player not ready yet - save video ID for later
-            FileLogger.log("⚠️ YouTube player not ready yet, queuing video...", "PlayerManager")
-            pendingVideoId = videoId
-        }
+        }, 2000) // Give WebView 2s to load
     }
 
     private fun playWithExoPlayer(url: String) {
@@ -328,11 +257,10 @@ class PlayerManager(
 
         FileLogger.log("🎬 Loading in ExoPlayer: ${url.take(100)}...", "PlayerManager")
         streamStartTime = System.currentTimeMillis()
-        isUsingYouTubePlayer = false
-        currentVideoId = null
+        isUsingWebView = false
 
-        // Show ExoPlayer, hide YouTube player
-        youtubePlayerView.visibility = View.GONE
+        // Show ExoPlayer, hide WebView
+        webView.visibility = View.GONE
 
         try {
             if (url.contains("googlevideo.com")) {
@@ -354,12 +282,12 @@ class PlayerManager(
 
     fun pause() {
         exoPlayer?.pause()
-        youtubePlayer?.pause()
+        webView.onPause()
     }
 
     fun resume() {
         exoPlayer?.play()
-        youtubePlayer?.play()
+        webView.onResume()
     }
 
     fun seekTo(positionMs: Long) {
@@ -375,10 +303,8 @@ class PlayerManager(
     }
 
     fun release() {
-        youtubePlayerView.visibility = View.GONE
-        youtubePlayer?.pause()
-        currentVideoId = null
-        pendingVideoId = null
+        webView.visibility = View.GONE
+        webView.loadUrl("about:blank")
         exoPlayer?.release()
         exoPlayer = null
         hasAppliedInitialSeek = false
