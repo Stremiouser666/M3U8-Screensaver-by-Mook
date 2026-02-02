@@ -122,23 +122,25 @@ class PlayerManager(
             ): WebResourceResponse? {
                 val url = request?.url?.toString() ?: return super.shouldInterceptRequest(view, request)
                 
-                // Only intercept once
-                if (hasInterceptedUrl) {
-                    return super.shouldInterceptRequest(view, request)
-                }
-                
-                // Check if this is a video URL (not audio)
-                if (url.contains("googlevideo.com") && 
-                    url.contains("mime=video") && 
-                    url.contains("itag=")) {
+                // Thread-safe check - only intercept once
+                synchronized(this@PlayerManager) {
+                    if (hasInterceptedUrl) {
+                        return super.shouldInterceptRequest(view, request)
+                    }
                     
-                    hasInterceptedUrl = true
-                    FileLogger.log("🎯 INTERCEPTED VIDEO URL: ${url.take(150)}...", "PlayerManager")
-                    
-                    // Switch to ExoPlayer with intercepted URL
-                    interceptedVideoUrl = url
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        switchToExoPlayer(url)
+                    // Check if this is a video URL (not audio)
+                    if (url.contains("googlevideo.com") && 
+                        url.contains("mime=video") && 
+                        url.contains("itag=")) {
+                        
+                        hasInterceptedUrl = true
+                        FileLogger.log("🎯 INTERCEPTED VIDEO URL: ${url.take(150)}...", "PlayerManager")
+                        
+                        // Switch to ExoPlayer with intercepted URL
+                        interceptedVideoUrl = url
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            switchToExoPlayer(url)
+                        }
                     }
                 }
                 
