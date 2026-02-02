@@ -4,6 +4,9 @@ import android.content.Context
 import android.view.Surface
 import android.view.View
 import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -36,6 +39,9 @@ class PlayerManager(
 
     // Track which player is active
     private var isUsingWebView = false
+    
+    // Track intercepted video URL
+    private var interceptedVideoUrl: String? = null
 
     private val youtubeDataSourceFactory = DefaultHttpDataSource.Factory()
         .setConnectTimeoutMs(15000)
@@ -51,6 +57,7 @@ class PlayerManager(
         release()
         hasAppliedInitialSeek = false
         isUsingWebView = false
+        interceptedVideoUrl = null
 
         // Initialize ExoPlayer (for Rutube and 360p YouTube)
         val speedMultiplier = playbackSpeed.coerceAtLeast(1.0f)
@@ -98,12 +105,49 @@ class PlayerManager(
                 })
             }
 
-        // Configure WebView for YouTube proxy
+        // Configure WebView with URL interception
         webView.settings.apply {
             javaScriptEnabled = true
             mediaPlaybackRequiresUserGesture = false
             domStorageEnabled = true
         }
+        
+        // Intercept video URLs from WebView
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): WebResourceResponse? {
+                val url = request?.url?.toString() ?: return super.shouldInterceptRequest(view, request)
+                
+                // Check if this is a direct video URL
+                if (url.contains("googlevideo.com") && 
+                    (url.contains("mime=video") || url.contains("itag="))) {
+                    
+                    FileLogger.log("🎯 INTERCEPTED VIDEO URL: ${url.take(150)}...", "PlayerManager")
+                    
+                    // Switch to ExoPlayer with intercepted URL
+                    interceptedVideoUrl = url
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        switchToExoPlayer(url)
+                    }
+                }
+                
+                return super.shouldInterceptRequest(view, request)
+            }
+        }
+    }
+    
+    private fun switchToExoPlayer(videoUrl: String) {
+        FileLogger.log("🔄 Switching from WebView to ExoPlayer with intercepted URL", "PlayerManager")
+        
+        // Stop WebView
+        webView.stopLoading()
+        webView.visibility = View.GONE
+        
+        // Play in ExoPlayer
+        isUsingWebView = false
+        playWithExoPlayer(videoUrl)
     }
 
     private fun applyBitrateLimits() {
@@ -222,34 +266,25 @@ class PlayerManager(
 
     private fun playWithWebView(embedUrl: String) {
         val proxyUrl = embedUrl.removePrefix("webview://")
-        
+
         // Add audio parameter based on preference
         val finalUrl = if (audioEnabled) {
             proxyUrl.replace("&mute=0", "&mute=0")
         } else {
             proxyUrl.replace("&mute=0", "&mute=1")
         }
-        
-        FileLogger.log("🎬 Loading YouTube video in WebView proxy: ${finalUrl.take(100)}...", "PlayerManager")
+
+        FileLogger.log("🎬 Loading YouTube video in WebView (will intercept URL): ${finalUrl.take(100)}...", "PlayerManager")
         streamStartTime = System.currentTimeMillis()
         isUsingWebView = true
+        interceptedVideoUrl = null
 
-        // Hide ExoPlayer, show WebView
+        // Show WebView temporarily (hidden once URL intercepted)
         webView.visibility = View.VISIBLE
         exoPlayer?.pause()
 
-        // Load URL - auto-plays because of autoplay=1 parameter
+        // Load URL - will intercept video URL and switch to ExoPlayer
         webView.loadUrl(finalUrl)
-        
-        // Simulate playback started for event listener
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            if (streamStartTime > 0) {
-                val latency = System.currentTimeMillis() - streamStartTime
-                FileLogger.log("⚡ WEBVIEW PLAYBACK STARTED in ${latency}ms", "PlayerManager")
-                streamStartTime = 0
-                eventListener.onPlaybackStateChanged(Player.STATE_READY)
-            }
-        }, 2000) // Give WebView 2s to load
     }
 
     private fun playWithExoPlayer(url: String) {
@@ -308,6 +343,7 @@ class PlayerManager(
         exoPlayer?.release()
         exoPlayer = null
         hasAppliedInitialSeek = false
+        interceptedVideoUrl = null
     }
 
     fun setVolume(volume: Float) {
