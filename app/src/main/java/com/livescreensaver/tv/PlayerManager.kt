@@ -42,6 +42,7 @@ class PlayerManager(
     
     // Track intercepted video URL
     private var interceptedVideoUrl: String? = null
+    private var hasInterceptedUrl = false
 
     private val youtubeDataSourceFactory = DefaultHttpDataSource.Factory()
         .setConnectTimeoutMs(15000)
@@ -58,6 +59,7 @@ class PlayerManager(
         hasAppliedInitialSeek = false
         isUsingWebView = false
         interceptedVideoUrl = null
+        hasInterceptedUrl = false
 
         // Initialize ExoPlayer (for Rutube and 360p YouTube)
         val speedMultiplier = playbackSpeed.coerceAtLeast(1.0f)
@@ -120,10 +122,17 @@ class PlayerManager(
             ): WebResourceResponse? {
                 val url = request?.url?.toString() ?: return super.shouldInterceptRequest(view, request)
                 
-                // Check if this is a direct video URL
+                // Only intercept once
+                if (hasInterceptedUrl) {
+                    return super.shouldInterceptRequest(view, request)
+                }
+                
+                // Check if this is a video URL (not audio)
                 if (url.contains("googlevideo.com") && 
-                    (url.contains("mime=video") || url.contains("itag="))) {
+                    url.contains("mime=video") && 
+                    url.contains("itag=")) {
                     
+                    hasInterceptedUrl = true
                     FileLogger.log("🎯 INTERCEPTED VIDEO URL: ${url.take(150)}...", "PlayerManager")
                     
                     // Switch to ExoPlayer with intercepted URL
@@ -278,6 +287,7 @@ class PlayerManager(
         streamStartTime = System.currentTimeMillis()
         isUsingWebView = true
         interceptedVideoUrl = null
+        hasInterceptedUrl = false
 
         // Show WebView temporarily (hidden once URL intercepted)
         webView.visibility = View.VISIBLE
@@ -344,6 +354,7 @@ class PlayerManager(
         exoPlayer = null
         hasAppliedInitialSeek = false
         interceptedVideoUrl = null
+        hasInterceptedUrl = false
     }
 
     fun setVolume(volume: Float) {
