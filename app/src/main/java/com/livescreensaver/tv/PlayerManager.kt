@@ -4,9 +4,6 @@ import android.content.Context
 import android.view.Surface
 import android.view.View
 import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -39,11 +36,6 @@ class PlayerManager(
 
     // Track which player is active
     private var isUsingWebView = false
-    
-    // Track intercepted video URL and headers
-    private var interceptedVideoUrl: String? = null
-    private var interceptedHeaders: Map<String, String>? = null
-    private var hasInterceptedUrl = false
 
     private val youtubeDataSourceFactory = DefaultHttpDataSource.Factory()
         .setConnectTimeoutMs(15000)
@@ -59,9 +51,6 @@ class PlayerManager(
         release()
         hasAppliedInitialSeek = false
         isUsingWebView = false
-        interceptedVideoUrl = null
-        interceptedHeaders = null
-        hasInterceptedUrl = false
 
         // Initialize ExoPlayer (for Rutube and 360p YouTube)
         val speedMultiplier = playbackSpeed.coerceAtLeast(1.0f)
@@ -109,68 +98,44 @@ class PlayerManager(
                 })
             }
 
-        // Configure WebView with URL interception
+        // Configure WebView for YouTube proxy
         webView.settings.apply {
             javaScriptEnabled = true
             mediaPlaybackRequiresUserGesture = false
             domStorageEnabled = true
         }
         
-        // Intercept video URLs from WebView
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(
-                view: WebView?,
-                request: WebResourceRequest?
-            ): WebResourceResponse? {
-                val url = request?.url?.toString() ?: return super.shouldInterceptRequest(view, request)
-                
-                // Thread-safe check - block ALL requests after interception
-                synchronized(this@PlayerManager) {
-                    // If we already intercepted, block ALL subsequent requests
-                    if (hasInterceptedUrl) {
-                        return WebResourceResponse("text/plain", "utf-8", null)
-                    }
-                    
-                    // Check if this is a video URL (not audio)
-                    if (url.contains("googlevideo.com") && 
-                        url.contains("mime=video") && 
-                        url.contains("itag=")) {
-                        
-                        hasInterceptedUrl = true
-                        
-                        // Capture request headers
-                        val headers = request?.requestHeaders?.toMap() ?: emptyMap()
-                        interceptedHeaders = headers
-                        
-                        FileLogger.log("🎯 INTERCEPTED VIDEO URL: ${url.take(150)}...", "PlayerManager")
-                        FileLogger.log("🎯 Captured ${headers.size} headers", "PlayerManager")
-                        
-                        // Switch to ExoPlayer with intercepted URL
-                        interceptedVideoUrl = url
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            switchToExoPlayer(url, headers)
-                        }
-                        
-                        // Block this request too
-                        return WebResourceResponse("text/plain", "utf-8", null)
-                    }
-                }
-                
-                return super.shouldInterceptRequest(view, request)
+        // Add WebChromeClient to handle fullscreen requests
+        webView.webChromeClient = object : android.webkit.WebChromeClient() {
+            override fun onShowCustomView(view: android.view.View?, callback: CustomViewCallback?) {
+                super.onShowCustomView(view, callback)
             }
         }
-    }
-    
-    private fun switchToExoPlayer(videoUrl: String, headers: Map<String, String>) {
-        FileLogger.log("🔄 Switching from WebView to ExoPlayer with intercepted URL and ${headers.size} headers", "PlayerManager")
         
-        // Stop WebView
-        webView.stopLoading()
-        webView.visibility = View.GONE
-        
-        // Play in ExoPlayer with headers
-        isUsingWebView = false
-        playWithExoPlayer(videoUrl, headers)
+        // Add WebViewClient to inject fullscreen after page loads
+        webView.webViewClient = object : android.webkit.WebViewClient() {
+            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                // Force iframe into fullscreen mode to reduce UI chrome
+                view?.evaluateJavascript(
+                    """
+                    (function() {
+                        var iframe = document.querySelector('iframe');
+                        if (iframe) {
+                            iframe.style.position = 'fixed';
+                            iframe.style.top = '0';
+                            iframe.style.left = '0';
+                            iframe.style.width = '100vw';
+                            iframe.style.height = '100vh';
+                            iframe.style.border = 'none';
+                            iframe.style.zIndex = '9999';
+                        }
+                    })();
+                    """.trimIndent(),
+                    null
+                )
+            }
+        }
     }
 
     private fun applyBitrateLimits() {
@@ -289,36 +254,40 @@ class PlayerManager(
 
     private fun playWithWebView(embedUrl: String) {
         val proxyUrl = embedUrl.removePrefix("webview://")
-
+        
         // Add audio parameter based on preference
         val finalUrl = if (audioEnabled) {
             proxyUrl.replace("&mute=0", "&mute=0")
         } else {
             proxyUrl.replace("&mute=0", "&mute=1")
         }
-
-        FileLogger.log("🎬 Loading YouTube video in WebView (will intercept URL): ${finalUrl.take(100)}...", "PlayerManager")
+        
+        FileLogger.log("🎬 Loading YouTube video in WebView proxy: ${finalUrl.take(100)}...", "PlayerManager")
         streamStartTime = System.currentTimeMillis()
         isUsingWebView = true
-        interceptedVideoUrl = null
-        interceptedHeaders = null
-        hasInterceptedUrl = false
 
-        // Show WebView temporarily (hidden once URL intercepted)
+        // Hide ExoPlayer, show WebView
         webView.visibility = View.VISIBLE
         exoPlayer?.pause()
 
-        // Load URL - will intercept video URL and switch to ExoPlayer
+        // Load URL - auto-plays because of autoplay=1 parameter
         webView.loadUrl(finalUrl)
+        
+        // Simulate playback started for event listener
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (streamStartTime > 0) {
+                val latency = System.currentTimeMillis() - streamStartTime
+                FileLogger.log("⚡ WEBVIEW PLAYBACK STARTED in ${latency}ms", "PlayerManager")
+                streamStartTime = 0
+                eventListener.onPlaybackStateChanged(Player.STATE_READY)
+            }
+        }, 2000) // Give WebView 2s to load
     }
 
-    private fun playWithExoPlayer(url: String, headers: Map<String, String> = emptyMap()) {
+    private fun playWithExoPlayer(url: String) {
         val player = exoPlayer ?: return
 
         FileLogger.log("🎬 Loading in ExoPlayer: ${url.take(100)}...", "PlayerManager")
-        if (headers.isNotEmpty()) {
-            FileLogger.log("🎬 Using ${headers.size} intercepted headers", "PlayerManager")
-        }
         streamStartTime = System.currentTimeMillis()
         isUsingWebView = false
 
@@ -327,17 +296,7 @@ class PlayerManager(
 
         try {
             if (url.contains("googlevideo.com")) {
-                // Create DataSource with headers
-                val dataSourceFactory = if (headers.isNotEmpty()) {
-                    DefaultHttpDataSource.Factory()
-                        .setConnectTimeoutMs(15000)
-                        .setReadTimeoutMs(15000)
-                        .setDefaultRequestProperties(headers)
-                } else {
-                    youtubeDataSourceFactory
-                }
-                
-                val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
+                val mediaSource = ProgressiveMediaSource.Factory(youtubeDataSourceFactory)
                     .createMediaSource(MediaItem.fromUri(url))
                 player.setMediaSource(mediaSource)
             } else {
@@ -381,9 +340,6 @@ class PlayerManager(
         exoPlayer?.release()
         exoPlayer = null
         hasAppliedInitialSeek = false
-        interceptedVideoUrl = null
-        interceptedHeaders = null
-        hasInterceptedUrl = false
     }
 
     fun setVolume(volume: Float) {
