@@ -53,8 +53,8 @@ class YouTubeEmbedExtractor {
             Log.d(TAG, "✅ Extracted video ID: $videoId for CodePen Proxy")
             FileLogger.log("✅ Using CodePen Proxy for video: $videoId", TAG)
             
-            // Build CodePen proxy URL with auto-play parameters
-            val proxyUrl = "$CODEPEN_PROXY?v=$videoId&autoplay=1&mute=0&loop=1&controls=0&modestbranding=1"
+            // Build CodePen proxy URL with auto-play and fullscreen parameters
+            val proxyUrl = "$CODEPEN_PROXY?v=$videoId&autoplay=1&mute=0&loop=1&controls=0&modestbranding=1&fs=1&playsinline=1"
             
             // Return with webview:// protocol so PlayerManager knows to use WebView
             return Pair("webview://$proxyUrl", "YouTube via CodePen Proxy (adaptive quality)")
