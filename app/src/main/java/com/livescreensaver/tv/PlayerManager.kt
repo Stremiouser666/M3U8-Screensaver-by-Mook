@@ -40,8 +40,9 @@ class PlayerManager(
     // Track which player is active
     private var isUsingWebView = false
     
-    // Track intercepted video URL
+    // Track intercepted video URL and headers
     private var interceptedVideoUrl: String? = null
+    private var interceptedHeaders: Map<String, String>? = null
     private var hasInterceptedUrl = false
 
     private val youtubeDataSourceFactory = DefaultHttpDataSource.Factory()
@@ -59,6 +60,7 @@ class PlayerManager(
         hasAppliedInitialSeek = false
         isUsingWebView = false
         interceptedVideoUrl = null
+        interceptedHeaders = null
         hasInterceptedUrl = false
 
         // Initialize ExoPlayer (for Rutube and 360p YouTube)
@@ -122,10 +124,11 @@ class PlayerManager(
             ): WebResourceResponse? {
                 val url = request?.url?.toString() ?: return super.shouldInterceptRequest(view, request)
                 
-                // Thread-safe check - only intercept once
+                // Thread-safe check - block ALL requests after interception
                 synchronized(this@PlayerManager) {
+                    // If we already intercepted, block ALL subsequent requests
                     if (hasInterceptedUrl) {
-                        return super.shouldInterceptRequest(view, request)
+                        return WebResourceResponse("text/plain", "utf-8", null)
                     }
                     
                     // Check if this is a video URL (not audio)
@@ -134,13 +137,22 @@ class PlayerManager(
                         url.contains("itag=")) {
                         
                         hasInterceptedUrl = true
+                        
+                        // Capture request headers
+                        val headers = request?.requestHeaders?.toMap() ?: emptyMap()
+                        interceptedHeaders = headers
+                        
                         FileLogger.log("🎯 INTERCEPTED VIDEO URL: ${url.take(150)}...", "PlayerManager")
+                        FileLogger.log("🎯 Captured ${headers.size} headers", "PlayerManager")
                         
                         // Switch to ExoPlayer with intercepted URL
                         interceptedVideoUrl = url
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            switchToExoPlayer(url)
+                            switchToExoPlayer(url, headers)
                         }
+                        
+                        // Block this request too
+                        return WebResourceResponse("text/plain", "utf-8", null)
                     }
                 }
                 
@@ -149,16 +161,16 @@ class PlayerManager(
         }
     }
     
-    private fun switchToExoPlayer(videoUrl: String) {
-        FileLogger.log("🔄 Switching from WebView to ExoPlayer with intercepted URL", "PlayerManager")
+    private fun switchToExoPlayer(videoUrl: String, headers: Map<String, String>) {
+        FileLogger.log("🔄 Switching from WebView to ExoPlayer with intercepted URL and ${headers.size} headers", "PlayerManager")
         
         // Stop WebView
         webView.stopLoading()
         webView.visibility = View.GONE
         
-        // Play in ExoPlayer
+        // Play in ExoPlayer with headers
         isUsingWebView = false
-        playWithExoPlayer(videoUrl)
+        playWithExoPlayer(videoUrl, headers)
     }
 
     private fun applyBitrateLimits() {
@@ -289,6 +301,7 @@ class PlayerManager(
         streamStartTime = System.currentTimeMillis()
         isUsingWebView = true
         interceptedVideoUrl = null
+        interceptedHeaders = null
         hasInterceptedUrl = false
 
         // Show WebView temporarily (hidden once URL intercepted)
@@ -299,10 +312,13 @@ class PlayerManager(
         webView.loadUrl(finalUrl)
     }
 
-    private fun playWithExoPlayer(url: String) {
+    private fun playWithExoPlayer(url: String, headers: Map<String, String> = emptyMap()) {
         val player = exoPlayer ?: return
 
         FileLogger.log("🎬 Loading in ExoPlayer: ${url.take(100)}...", "PlayerManager")
+        if (headers.isNotEmpty()) {
+            FileLogger.log("🎬 Using ${headers.size} intercepted headers", "PlayerManager")
+        }
         streamStartTime = System.currentTimeMillis()
         isUsingWebView = false
 
@@ -311,7 +327,17 @@ class PlayerManager(
 
         try {
             if (url.contains("googlevideo.com")) {
-                val mediaSource = ProgressiveMediaSource.Factory(youtubeDataSourceFactory)
+                // Create DataSource with headers
+                val dataSourceFactory = if (headers.isNotEmpty()) {
+                    DefaultHttpDataSource.Factory()
+                        .setConnectTimeoutMs(15000)
+                        .setReadTimeoutMs(15000)
+                        .setDefaultRequestProperties(headers)
+                } else {
+                    youtubeDataSourceFactory
+                }
+                
+                val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
                     .createMediaSource(MediaItem.fromUri(url))
                 player.setMediaSource(mediaSource)
             } else {
@@ -356,6 +382,7 @@ class PlayerManager(
         exoPlayer = null
         hasAppliedInitialSeek = false
         interceptedVideoUrl = null
+        interceptedHeaders = null
         hasInterceptedUrl = false
     }
 
