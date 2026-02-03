@@ -68,8 +68,30 @@ class YouTubeStandaloneExtractor(
 
             debugLog("✓ Extracted video ID: $videoId")
 
-            // Try ANDROID_VR client first
-            debugLog(">>> Attempting Method 1: Android VR InnerTube API")
+            // Try ANDROID client first (original, less restrictive)
+            debugLog(">>> Attempting Method 1: Android InnerTube API")
+            val androidResult = tryInnerTubeExtraction(
+                videoId,
+                clientName = "ANDROID",
+                clientVersion = "19.09.37",
+                clientId = "3",
+                apiKey = ANDROID_API_KEY,
+                androidSdkVersion = 30
+            )
+
+            if (androidResult != null) {
+                debugLog("✅ SUCCESS via Android InnerTube!")
+                return@withContext ExtractionResult(
+                    success = true,
+                    streamUrl = androidResult.first,
+                    quality = androidResult.second
+                )
+            }
+
+            debugLog("⚠️ Android client failed, trying Android VR...")
+
+            // Try ANDROID_VR client
+            debugLog(">>> Attempting Method 2: Android VR InnerTube API")
             val androidVrResult = tryInnerTubeExtraction(
                 videoId,
                 clientName = "ANDROID_VR",
@@ -91,7 +113,7 @@ class YouTubeStandaloneExtractor(
             debugLog("⚠️ Android VR client failed, trying Web client...")
 
             // Try WEB client as fallback
-            debugLog(">>> Attempting Method 2: Web InnerTube API")
+            debugLog(">>> Attempting Method 3: Web InnerTube API")
             val webResult = tryInnerTubeExtraction(
                 videoId,
                 clientName = "WEB",
