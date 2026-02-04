@@ -143,7 +143,7 @@ Speeds do not apply to YouTube videos 480p-4K.</string>
     <string name="pref_debug_enabled_summary">Save timing and performance data to /sdcard/Download/playback_timing.txt</string>
 
     <string name="pref_stats_enabled_title">Enable Stats Overlay</string>
-    <string name="pref_stats_enabled_summary">Show playback statistics (for troubleshooting)</string>
+    <string name="pref_stats_enabled_summary">Show playback statistics (for Rutube troubleshooting)</string>
     <string name="pref_stats_position_title">Stats Position</string>
     <string name="pref_stats_position_summary">Corner placement for stats display</string>
     <string name="pref_stats_interval_title">Stats Update Interval</string>
