@@ -157,12 +157,12 @@
 
     <!-- YouTube Quality Mode Options -->
     <string-array name="youtube_quality_mode_entries">
-        <item>360p (Video + Audio) - Safe Mode</item>
-        <item>480p (YT Video Only)</item>
-        <item>720p (YT Video Only)</item>
-        <item>1080p (YT Video Only)</item>
-        <item>1440p (YT Video Only L)</item>
-        <item>4K (YT Video Only)</item>
+        <item>360p (YT Video + Audio) - Safe Mode</item>
+        <item>480p (YT ☠️webview☠️)</item>
+        <item>720p (YT ☠️webview☠️)</item>
+        <item>1080p (YT ☠️webview☠️)</item>
+        <item>1440p (YT ☠️webview☠️)</item>
+        <item>4K (YT ☠️webview☠️)</item>
     </string-array>
 
     <string-array name="youtube_quality_mode_values">
