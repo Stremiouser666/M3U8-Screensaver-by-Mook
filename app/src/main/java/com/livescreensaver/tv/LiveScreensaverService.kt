@@ -23,7 +23,7 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
     companion object {
         private const val TAG = "LiveScreensaverService"
         private const val PREF_VIDEO_URL = "video_url"
-        const val DEFAULT_VIDEO_URL = "https://youtube.com/watch?v=i9uahAZrgm8&list=RDi9uahAZrgm8&start_radio=1&pp=oAcB"
+        const val DEFAULT_VIDEO_URL = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
         private const val CACHE_DURATION = 300L
         private const val MAX_RETRIES = 3
         private const val STALL_TIMEOUT_MS = 10_000L
