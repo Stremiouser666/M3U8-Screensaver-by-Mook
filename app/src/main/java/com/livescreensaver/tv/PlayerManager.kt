@@ -104,14 +104,14 @@ class PlayerManager(
             mediaPlaybackRequiresUserGesture = false
             domStorageEnabled = true
         }
-        
+
         // Add WebChromeClient to handle fullscreen requests
         webView.webChromeClient = object : android.webkit.WebChromeClient() {
             override fun onShowCustomView(view: android.view.View?, callback: CustomViewCallback?) {
                 super.onShowCustomView(view, callback)
             }
         }
-        
+
         // Add WebViewClient to inject fullscreen after page loads
         webView.webViewClient = object : android.webkit.WebViewClient() {
             override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
@@ -166,8 +166,9 @@ class PlayerManager(
     }
 
     fun setResolution(resolution: Int) {
-        if (resolution != 720 && resolution != 1080 && resolution != 360) {
-            FileLogger.log("⚠️ Invalid resolution: $resolution. Must be 360, 720 or 1080", "PlayerManager")
+        if (resolution != 360 && resolution != 480 && resolution != 720 && 
+            resolution != 1080 && resolution != 1440 && resolution != 2160) {
+            FileLogger.log("⚠️ Invalid resolution: $resolution. Must be 360, 480, 720, 1080, 1440, or 2160", "PlayerManager")
             return
         }
 
@@ -254,15 +255,26 @@ class PlayerManager(
 
     private fun playWithWebView(embedUrl: String) {
         val proxyUrl = embedUrl.removePrefix("webview://")
-        
-        // Add audio parameter based on preference
-        val finalUrl = if (audioEnabled) {
-            proxyUrl.replace("&mute=0", "&mute=0")
-        } else {
-            proxyUrl.replace("&mute=0", "&mute=1")
+
+        // Map resolution to YouTube quality hint (for 480p+)
+        val qualityHint = when (currentResolution) {
+            480 -> "medium"       // 480p
+            720 -> "hd720"        // 720p
+            1080 -> "hd1080"      // 1080p
+            1440 -> "hd1440"      // 2K
+            2160 -> "hd2160"      // 4K
+            else -> "hd720"       // default
         }
         
-        FileLogger.log("🎬 Loading YouTube video in WebView proxy: ${finalUrl.take(100)}...", "PlayerManager")
+        // Add quality hint and audio parameter to CodePen URL
+        val finalUrl = if (audioEnabled) {
+            proxyUrl.replace("&mute=0", "&mute=0&vq=$qualityHint")
+        } else {
+            proxyUrl.replace("&mute=0", "&mute=1&vq=$qualityHint")
+        }
+
+        FileLogger.log("🎬 Loading YouTube video in WebView proxy with quality hint: $qualityHint (${currentResolution}p)", "PlayerManager")
+        FileLogger.log("🎬 URL: ${finalUrl.take(100)}...", "PlayerManager")
         streamStartTime = System.currentTimeMillis()
         isUsingWebView = true
 
@@ -272,7 +284,7 @@ class PlayerManager(
 
         // Load URL - auto-plays because of autoplay=1 parameter
         webView.loadUrl(finalUrl)
-        
+
         // Simulate playback started for event listener
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             if (streamStartTime > 0) {
