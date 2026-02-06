@@ -8,7 +8,7 @@
     <string name="string_capitalize">CAPITALIZE_ME</string>
 
     <!-- Main URL Settings -->
-    <string name="pref_video_url_title">Stream URL</string>
+    <string name="pref_video_url_title">Main URL</string>
     <string name="pref_video_url_summary">Enter YouTube, Rutube, or HLS URL (.m3u8)</string>
     <string name="pref_clear_url_title">Clear URL</string>
     <string name="pref_clear_url_summary">Clear current URL (will use default stream if left empty)</string>
@@ -41,7 +41,7 @@
     <string name="pref_clear_schedule_summary">Remove all weekly schedule URLs</string>
 
     <!-- Playback Control -->
-    <string name="pref_category_playback">Playback Control</string>
+    <string name="pref_category_playback">Rutube Playback Control</string>
 
     <string name="pref_intro_enabled_title">Enable Intro Playback</string>
     <string name="pref_intro_enabled_summary">Play beginning of video before jumping to random position</string>
@@ -54,35 +54,53 @@
     <string name="pref_skip_beginning_duration_summary">How many seconds to skip from start (0–600 seconds)</string>
 
     <string name="pref_random_seek_enabled_title">Enable Random Seek</string>
-    <string name="pref_random_seek_enabled_summary">Jump to random position in video after intro</string>
+    <string name="pref_random_seek_enabled_summary">Jump to random position in video</string>
 
     <string name="pref_resume_enabled_title">Resume Playback</string>
     <string name="pref_resume_enabled_summary">Continue from last position when screensaver restarts</string>
 
+    <string name="pref_resume_behavior_title">Playback Behavior</string>
+    <string name="pref_resume_behavior_summary">Tap to learn how Resume and Random Seek work together</string>
+    <string name="pref_resume_behavior_info">How Resume interacts with Random Seek:
+
+\n• Resume OFF + Random Seek ON
+Always start at random position
+
+\n• Resume ON + Random Seek OFF
+Always resume from last position
+
+\n• Resume ON + Random Seek ON
+Smart mode: resume if recent, otherwise random
+
+\n•Resume works when:
+\n✓ Same URL is still set
+\n✓ Resume feature enabled</string>
+
     <string name="pref_preferred_resolution_title">Preferred Resolution</string>
     <string name="pref_preferred_resolution_summary">Select video resolution quality</string>
 
-    <string name="pref_resume_behavior_title">Playback Behavior Reference</string>
-    <string name="pref_resume_behavior_info">
-How Resume interacts with Random Seek:
-
-• Resume OFF + Random Seek ON = Always start at random position
-• Resume ON + Random Seek OFF = Always resume from last position
-• Resume ON + Random Seek ON = Smart mode
-
-Resume will only work if:
-✓ Same URL is still set
-✓ Less than 5 minutes have passed
-✓ Resume feature is enabled
+    <string name="pref_youtube_quality_mode_title">YouTube/Rutube Quality</string>
+    <string name="pref_youtube_quality_mode_summary">Choose quality for YouTube and Rutube videos</string>
+    <string name="pref_youtube_quality_info_title">Quality Mode Information</string>
+    <string name="pref_youtube_quality_info_summary">Tap to learn about quality modes and how they work</string>
+    <string name="pref_youtube_quality_info_details">• 360p: Single stream with audio (works on all devices)
+\n• 480p-4K: Youtube ☠️webview☠️
+\n• 360p-4K: Rutube has video and audio
+\n• Rutube: All settings and video qualities work
+\n• YouTube:360p same as Rutube, 480p-4K uses webview which is Extremely CPU heavy and may freeze both app and tv, Resolutions are suggested to YouTube but response depends on YouTube, Bandwidth and CPU power.The only setting available for this is clock overlay.
     </string>
-
-    <string name="pref_video_scaling_title">Video Scaling</string>
-    <string name="pref_video_scaling_summary">How video fits on screen</string>
 
     <string name="pref_speed_enabled_title">Enable Speed Control</string>
     <string name="pref_speed_enabled_summary">Adjust playback speed for visual effects</string>
     <string name="pref_playback_speed_title">Playback Speed</string>
     <string name="pref_playback_speed_summary">Video playback speed</string>
+    <string name="pref_playback_speed_info_title">Speed Information</string>
+    <string name="pref_playback_speed_info_summary">Tap to learn about speed limitations</string>
+    <string name="pref_playback_speed_info_details">Playback Speed Options:
+\n0.25x, 0.5x, 0.75x, 1.0x (normal), 1.25x, 1.5x, 2.0x
+
+\n⚠️ Important Limitation:
+Speeds do not apply to YouTube videos 480p-4K.</string>
 
     <!-- Audio -->
     <string name="pref_category_audio">Audio</string>
@@ -122,12 +140,10 @@ Resume will only work if:
     <string name="pref_category_debug">Debug Info</string>
 
     <string name="pref_debug_enabled_title">Enable Debug Logging</string>
-    <string name="pref_debug_enabled_summary">
-Save timing and performance data to /sdcard/Download/playback_timing.txt
-    </string>
+    <string name="pref_debug_enabled_summary">Save timing and performance data to /sdcard/Download/playback_timing.txt</string>
 
     <string name="pref_stats_enabled_title">Enable Stats Overlay</string>
-    <string name="pref_stats_enabled_summary">Show playback statistics (for troubleshooting)</string>
+    <string name="pref_stats_enabled_summary">Show playback statistics (for Rutube troubleshooting)</string>
     <string name="pref_stats_position_title">Stats Position</string>
     <string name="pref_stats_position_summary">Corner placement for stats display</string>
     <string name="pref_stats_interval_title">Stats Update Interval</string>

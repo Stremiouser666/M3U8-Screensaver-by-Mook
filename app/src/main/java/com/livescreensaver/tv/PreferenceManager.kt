@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 data class PreferenceCache(
     val audioEnabled: Boolean,
     val audioVolume: Int,
-    val videoScalingMode: String,
+    // videoScalingMode removed - not supported with SurfaceView
     val speedEnabled: Boolean,
     val playbackSpeed: Float,
     val introEnabled: Boolean,
@@ -28,12 +28,15 @@ data class PreferenceCache(
 )
 
 class AppPreferenceManager(private val preferences: SharedPreferences) {
-    
+
+    companion object {
+        private const val PREF_LAST_ACTIVE_URL = "last_active_url"
+    }
+
     fun loadPreferenceCache(): PreferenceCache {
-        return PreferenceCache(
+        val cache = PreferenceCache(
             audioEnabled = preferences.getBoolean("audio_enabled", false),
             audioVolume = preferences.getString("audio_volume", "50")?.toIntOrNull() ?: 50,
-            videoScalingMode = preferences.getString("video_scaling_mode", "scale_to_fit") ?: "scale_to_fit",
             speedEnabled = preferences.getBoolean("speed_enabled", false),
             playbackSpeed = preferences.getString("playback_speed", "1.0")?.toFloatOrNull() ?: 1.0f,
             introEnabled = preferences.getBoolean("intro_enabled", true),
@@ -54,13 +57,34 @@ class AppPreferenceManager(private val preferences: SharedPreferences) {
             resumeEnabled = preferences.getBoolean("resume_enabled", false),
             preferredResolution = preferences.getString("preferred_resolution", "auto") ?: "auto"
         )
+        
+        // Debug logging
+        android.util.Log.d("AppPreferenceManager", "📋 Loaded preferences:")
+        android.util.Log.d("AppPreferenceManager", "  randomSeekEnabled: ${cache.randomSeekEnabled}")
+        android.util.Log.d("AppPreferenceManager", "  introEnabled: ${cache.introEnabled} (${cache.introDuration}ms)")
+        android.util.Log.d("AppPreferenceManager", "  skipBeginningEnabled: ${cache.skipBeginningEnabled} (${cache.skipBeginningDuration}ms)")
+        android.util.Log.d("AppPreferenceManager", "  speedEnabled: ${cache.speedEnabled} (${cache.playbackSpeed}x)")
+        
+        return cache
     }
-    
+
     fun getLoadingAnimationType(): String {
         return preferences.getString("loading_animation_type", "spinning_dots") ?: "spinning_dots"
     }
-    
+
     fun getLoadingAnimationText(): String {
         return preferences.getString("loading_animation_text", "Loading") ?: "Loading"
+    }
+
+    fun getLastActiveUrl(): String? {
+        return preferences.getString(PREF_LAST_ACTIVE_URL, null)
+    }
+
+    fun saveLastActiveUrl(url: String) {
+        preferences.edit().putString(PREF_LAST_ACTIVE_URL, url).apply()
+    }
+
+    fun clearLastActiveUrl() {
+        preferences.edit().remove(PREF_LAST_ACTIVE_URL).apply()
     }
 }

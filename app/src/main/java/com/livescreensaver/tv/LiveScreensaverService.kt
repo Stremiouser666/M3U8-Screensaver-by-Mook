@@ -10,8 +10,10 @@ import android.util.Log
 import android.view.Gravity
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
+import android.webkit.WebView
 import androidx.media3.common.Player
 import androidx.preference.PreferenceManager
 import kotlinx.coroutines.*
@@ -21,7 +23,7 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
     companion object {
         private const val TAG = "LiveScreensaverService"
         private const val PREF_VIDEO_URL = "video_url"
-        const val DEFAULT_VIDEO_URL = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+        const val DEFAULT_VIDEO_URL = "https://youtube.com/watch?v=i9uahAZrgm8&list=RDi9uahAZrgm8&start_radio=1&pp=oAcB"
         private const val CACHE_DURATION = 300L
         private const val MAX_RETRIES = 3
         private const val STALL_TIMEOUT_MS = 10_000L
@@ -35,6 +37,7 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
 
     private var prefCache: PreferenceCache? = null
     private var surfaceView: SurfaceView? = null
+    private var webView: WebView? = null  // WebView for YouTube proxy
     private var containerLayout: FrameLayout? = null
     private var loadingOverlay: LoadingAnimationOverlay? = null
     private var loadingTextView: TextView? = null
@@ -77,7 +80,7 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
             val cache = prefCache ?: return
             val usageStats = usageStatsTracker.getUsageStats()
             val bandwidthStats = bandwidthTracker.getBandwidthStats()
-            uiOverlayManager.updateStats(playerManager.getPlayer(), usageStats, bandwidthStats)
+            uiOverlayManager.updateStats(playerManager.getPlayer(), usageStats, bandwidthStats, bandwidthTracker)
             usageStatsTracker.trackPlaybackUsage()
             bandwidthTracker.trackBandwidth(playerManager.getPlayer())
             handler.postDelayed(this, cache.statsInterval)
@@ -126,6 +129,7 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
             prefCache = preferenceManager.loadPreferenceCache()
             streamExtractor = StreamExtractor(this, cachePrefs)
 
+            checkAndInvalidateCacheIfNeeded()
             refreshUrlIfNeeded()
             setupSurface()
 
@@ -142,6 +146,28 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
         }
     }
 
+    private fun checkAndInvalidateCacheIfNeeded() {
+        val cache = prefCache ?: return
+        val currentUrl = scheduleManager.getScheduledUrl(cache)
+        val lastActiveUrl = preferenceManager.getLastActiveUrl()
+
+        if (lastActiveUrl != null && currentUrl != lastActiveUrl) {
+            Log.d(TAG, "🔄 Active URL changed from [$lastActiveUrl] to [$currentUrl]")
+            Log.d(TAG, "🗑️ Invalidating cached stream URL")
+
+            cachePrefs.edit()
+                .remove("original_url")
+                .remove("extracted_url")
+                .remove("url_type")
+                .apply()
+
+            FileLogger.log("Cache invalidated due to URL change")
+        }
+
+        preferenceManager.saveLastActiveUrl(currentUrl)
+        Log.d(TAG, "💾 Saved current active URL: $currentUrl")
+    }
+
     private fun refreshUrlIfNeeded() {
         val originalUrl = streamExtractor.getCachedOriginalUrl()
         val urlType = streamExtractor.getCachedUrlType()
@@ -151,9 +177,10 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
             return
         }
 
-        val currentMainUrl = preferences.getString(PREF_VIDEO_URL, DEFAULT_VIDEO_URL) ?: DEFAULT_VIDEO_URL
+        val cache = prefCache ?: return
+        val currentActiveUrl = scheduleManager.getScheduledUrl(cache)
 
-        if (currentMainUrl.contains(".m3u8")) {
+        if (currentActiveUrl.contains(".m3u8")) {
             Log.d(TAG, "✅ Direct HLS URL - no refresh needed")
             return
         }
@@ -168,7 +195,6 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
                             streamExtractor.extractRutubeUrl(originalUrl)
                         }
                         if (refreshedUrl != null) {
-                            preferences.edit().putString(PREF_VIDEO_URL, refreshedUrl).apply()
                             Log.d(TAG, "✅ Rutube URL refreshed")
                         } else {
                             Log.w(TAG, "⚠️ Rutube refresh failed - will try cached URL")
@@ -197,6 +223,15 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
         }
 
         containerLayout?.addView(surfaceView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+
+        // WebView for YouTube proxy (NEW)
+        webView = WebView(this).apply {
+            visibility = View.GONE
+        }
+        containerLayout?.addView(webView, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
@@ -232,6 +267,18 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
         releasePlayer()
     }
 
+    private fun extractResolutionFromQualityMode(qualityMode: String): Int {
+        return when {
+            qualityMode.contains("360") -> 360
+            qualityMode.contains("480") -> 480
+            qualityMode.contains("720") -> 720
+            qualityMode.contains("1080") -> 1080
+            qualityMode.contains("1440") -> 1440
+            qualityMode.contains("2160") -> 2160
+            else -> 1080 // default
+        }
+    }
+
     private fun initializePlayer() {
         FileLogger.log("🎮 initializePlayer() called - surfaceReady=$surfaceReady, playerExists=${::playerManager.isInitialized}")
 
@@ -256,22 +303,35 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
                                 }
                             }
                         }
-                        
+
                         val isPlaying = state == Player.STATE_READY && playerManager.getPlayer()?.playWhenReady == true
                         handlePlayingChanged(isPlaying)
                     }
-                    
+
                     override fun onPlayerError(error: Exception) {
                         hideLoadingAnimation()
                         handlePlaybackFailure()
                     }
-                }
+                },
+                webView = webView!!  // Pass WebView for YouTube proxy
             )
 
-            // Initialize player with surface
             val surface = surfaceView?.holder?.surface
             if (surface != null) {
                 playerManager.initialize(surface)
+
+                // Apply preferences to player
+                prefCache?.let { cache ->
+                    playerManager.updatePreferences(cache)
+                    FileLogger.log("✅ Preferences applied to PlayerManager")
+                }
+
+                // Set resolution based on quality mode
+                val qualityMode = preferences.getString("youtube_quality_mode", "1080_video_only") ?: "1080_video_only"
+                val resolution = extractResolutionFromQualityMode(qualityMode)
+                playerManager.setResolution(resolution)
+                FileLogger.log("✅ Resolution set to ${resolution}p based on quality mode: $qualityMode")
+
                 loadStream(videoUrl)
                 handler.post(stallCheckRunnable)
             } else {
@@ -296,13 +356,14 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
             val duration = player.duration
             val skipDuration = if (cache.skipBeginningEnabled) cache.skipBeginningDuration else 0L
 
+            // Only handle resume here - PlayerManager handles skip/random seek automatically
             val resumedPosition = resumeManager.attemptResume(cache, currentSourceUrl, duration, skipDuration)
 
-            // Apply skip/resume logic
             if (resumedPosition != null && resumedPosition > 0) {
                 player.seekTo(resumedPosition)
+                FileLogger.log("⏮️ Resumed playback at ${resumedPosition / 1000}s")
             }
-            
+
             hasProcessedPlayback = true
         }
     }
@@ -317,7 +378,12 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
 
     private fun getVideoUrl(): String {
         val cache = prefCache ?: return preferences.getString(PREF_VIDEO_URL, DEFAULT_VIDEO_URL) ?: DEFAULT_VIDEO_URL
-        return scheduleManager.getScheduledUrl(cache)
+        val selectedUrl = scheduleManager.getScheduledUrl(cache)
+
+        Log.d(TAG, "Selected URL for playback: $selectedUrl")
+        FileLogger.log("Selected URL: $selectedUrl")
+
+        return selectedUrl
     }
 
     private fun loadStream(sourceUrl: String) {
@@ -334,14 +400,25 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
                 val streamUrl = withTimeout(EXTRACTION_TIMEOUT_MS) {
                     if (streamExtractor.needsExtraction(sourceUrl)) {
                         FileLogger.log("✅ Needs extraction: true", TAG)
+
+                        val cachedOriginal = streamExtractor.getCachedOriginalUrl()
                         val cachedUrl = streamExtractor.getCachedUrl()
-                        if (cachedUrl != null && cachedUrl.isNotEmpty()) {
-                            FileLogger.log("✅ Trying cached extracted URL first: $cachedUrl", TAG)
-                            Log.d(TAG, "✅ Trying cached extracted URL first")
+
+                        // Use the cache ONLY on the initial load, not on retries.
+                        // On retries isRetrying is true, the cache has already been
+                        // invalidated by handlePlaybackFailure(), and we need a fresh
+                        // extraction to get a new googlevideo URL.
+                        if (!isRetrying && cachedOriginal == sourceUrl && cachedUrl != null && cachedUrl.isNotEmpty()) {
+                            FileLogger.log("✅ Using cached extracted URL: $cachedUrl", TAG)
+                            Log.d(TAG, "✅ Using cached extracted URL")
                             cachedUrl
                         } else {
-                            FileLogger.log("⚠️ No cached URL, extracting...", TAG)
-                            streamExtractor.extractStreamUrl(sourceUrl, false, CACHE_DURATION)
+                            if (isRetrying) {
+                                FileLogger.log("🔄 Retrying - skipping cache, forcing fresh extraction", TAG)
+                            } else {
+                                FileLogger.log("⚠️ Cache miss or different source, extracting...", TAG)
+                            }
+                            streamExtractor.extractStreamUrl(sourceUrl, isRetrying, CACHE_DURATION)
                                 ?: streamExtractor.extractStreamUrl(sourceUrl, true, CACHE_DURATION)
                         }
                     } else {
@@ -398,6 +475,13 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
 
         Log.w(TAG, "⚠️ Playback failed - attempt $retryCount of $MAX_RETRIES")
 
+        // Invalidate the cached extracted URL immediately. The googlevideo URL
+        // that was just played failed (e.g. 403), so there is no point retrying
+        // with the same URL. The next loadStream() call needs to go back to
+        // YouTube and extract a fresh one.
+        streamExtractor.invalidateCache()
+        FileLogger.log("🗑️ Invalidated stream cache on playback failure (retry $retryCount)", TAG)
+
         if (retryCount == 1) {
             Log.w(TAG, "🔄 Attempting URL refresh...")
 
@@ -430,15 +514,32 @@ class LiveScreensaverService : DreamService(), SurfaceHolder.Callback {
 
     private fun retryPlayback() {
         stallDetectionTime = 0
-        isRetrying = false
         hasProcessedPlayback = false
         playerManager.release()
-        
-        // Reinitialize player for retry
+
         val surface = surfaceView?.holder?.surface
         if (surface != null) {
             playerManager.initialize(surface)
+
+            // Reapply preferences after retry
+            prefCache?.let { cache ->
+                playerManager.updatePreferences(cache)
+                FileLogger.log("✅ Preferences reapplied after retry")
+            }
+
+            // Reapply resolution after retry
+            val qualityMode = preferences.getString("youtube_quality_mode", "1080_video_only") ?: "1080_video_only"
+            val resolution = extractResolutionFromQualityMode(qualityMode)
+            playerManager.setResolution(resolution)
+            FileLogger.log("✅ Resolution reapplied after retry: ${resolution}p")
+
+            // loadStream will see isRetrying=true, skip the cache, and extract fresh.
             currentSourceUrl?.let { loadStream(it) }
+
+            // Clear the flag after loadStream has been called so it can read it.
+            // Use a small delay to ensure the coroutine inside loadStream has
+            // already captured the value before we reset it.
+            handler.postDelayed({ isRetrying = false }, 500)
         }
     }
 
