@@ -25,7 +25,30 @@ android {
 
     buildTypes {
         release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        
+        debug {
             minifyEnabled false
+        }
+    }
+
+    flavorDimensions "distribution"
+    
+    productFlavors {
+        standard {
+            dimension "distribution"
+            applicationIdSuffix ""
+            versionNameSuffix ""
+        }
+        
+        tv {
+            dimension "distribution"
+            applicationIdSuffix ".tv"
+            versionNameSuffix "-tv"
+            // TV-optimized: remove phone-specific features
         }
     }
 
@@ -50,12 +73,12 @@ dependencies {
     implementation 'androidx.leanback:leanback:1.2.0-alpha04'
     implementation 'androidx.leanback:leanback-preference:1.2.0-alpha04'
     implementation 'androidx.preference:preference-ktx:1.2.1'
-    
+
     // ExoPlayer with HLS and DASH support
     implementation 'androidx.media3:media3-exoplayer:1.5.0'
     implementation 'androidx.media3:media3-exoplayer-hls:1.5.0'
     implementation 'androidx.media3:media3-exoplayer-dash:1.5.0'  // DASH support for 1080p YouTube
-    
+
     implementation 'com.github.TeamNewPipe:NewPipeExtractor:v0.24.8'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
