@@ -40,13 +40,10 @@ android {
     productFlavors {
         standard {
             dimension "distribution"
-            applicationIdSuffix ""
-            versionNameSuffix ""
         }
         
         tv {
             dimension "distribution"
-            applicationIdSuffix ".tv"
             versionNameSuffix "-tv"
             proguardFiles 'proguard-tv-rules.pro'
         }
