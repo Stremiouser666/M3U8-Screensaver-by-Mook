@@ -79,10 +79,10 @@ jobs:
             APK_PATH="app/build/outputs/apk/standard/debug/app-standard-debug.apk"
             echo "✅ Build Type: Debug"
           elif [ "$BUILD_TYPE" = "release" ]; then
-            APK_PATH="app/build/outputs/apk/standard/release/app-standard-release.apk"
+            APK_PATH="app/build/outputs/apk/standard/release/app-standard-release-unsigned.apk"
             echo "✅ Build Type: Release (Standard)"
           else
-            APK_PATH="app/build/outputs/apk/tv/release/app-tv-release.apk"
+            APK_PATH="app/build/outputs/apk/tv/release/app-tv-release-unsigned.apk"
             echo "✅ Build Type: Release (TV-Optimized)"
           fi
           
