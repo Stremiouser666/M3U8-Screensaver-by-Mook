@@ -50,7 +50,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-${{ github.run_number }}
-          path: app/build/outputs/apk/standardDebug/app-standard-debug.apk
+          path: app/build/outputs/apk/standard/debug/*.apk
           retention-days: 30
 
       - name: Upload Release APK
@@ -58,7 +58,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-release-${{ github.run_number }}
-          path: app/build/outputs/apk/standardRelease/app-standard-release.apk
+          path: app/build/outputs/apk/standard/release/*.apk
           retention-days: 30
 
       - name: Upload Release TV APK
@@ -66,17 +66,20 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-release-tv-${{ github.run_number }}
-          path: app/build/outputs/apk/tv/release/app-tv-release.apk
+          path: app/build/outputs/apk/tv/release/*.apk
           retention-days: 30
+
+      - name: Find APK files
+        run: find app/build/outputs/apk -name "*.apk" -type f
 
       - name: Show APK Info
         run: |
           BUILD_TYPE="${{ github.event.inputs.build_type }}"
           if [ "$BUILD_TYPE" = "debug" ]; then
-            APK_PATH="app/build/outputs/apk/standardDebug/app-standard-debug.apk"
+            APK_PATH="app/build/outputs/apk/standard/debug/app-standard-debug.apk"
             echo "✅ Build Type: Debug"
           elif [ "$BUILD_TYPE" = "release" ]; then
-            APK_PATH="app/build/outputs/apk/standardRelease/app-standard-release.apk"
+            APK_PATH="app/build/outputs/apk/standard/release/app-standard-release.apk"
             echo "✅ Build Type: Release (Standard)"
           else
             APK_PATH="app/build/outputs/apk/tv/release/app-tv-release.apk"
@@ -88,5 +91,7 @@ jobs:
             echo "📍 APK Path: $APK_PATH"
           else
             echo "❌ APK not found at $APK_PATH"
+            echo "📂 Looking for APK files..."
+            find app/build/outputs/apk -name "*.apk" -type f
             exit 1
           fi
