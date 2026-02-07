@@ -25,7 +25,30 @@ android {
 
     buildTypes {
         release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        
+        debug {
             minifyEnabled false
+        }
+    }
+
+    flavorDimensions "distribution"
+    
+    productFlavors {
+        standard {
+            dimension "distribution"
+            applicationIdSuffix ""
+            versionNameSuffix ""
+        }
+        
+        tv {
+            dimension "distribution"
+            applicationIdSuffix ".tv"
+            versionNameSuffix "-tv"
+            // TV-optimized: remove phone-specific features
         }
     }
 
