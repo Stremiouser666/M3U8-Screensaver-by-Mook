@@ -11,11 +11,13 @@ on:
         options:
           - debug
           - release
-          - release-tv-small
+          - release-tv
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
@@ -31,26 +33,60 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Debug
+      - name: Build Debug APK
         if: github.event.inputs.build_type == 'debug'
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleStandardDebug --stacktrace
 
-      - name: Build Release
+      - name: Build Release APK
         if: github.event.inputs.build_type == 'release'
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew assembleStandardRelease --stacktrace
 
-      - name: Build Release (TV Small)
-        if: github.event.inputs.build_type == 'release-tv-small'
-        run: ./gradlew assembleRelease -DtvOptimized=true --stacktrace
+      - name: Build Release TV APK
+        if: github.event.inputs.build_type == 'release-tv'
+        run: ./gradlew assembleTvRelease --stacktrace
 
-      - name: Upload APK
+      - name: Upload Debug APK
+        if: github.event.inputs.build_type == 'debug'
         uses: actions/upload-artifact@v4
         with:
-          name: app-${{ github.event.inputs.build_type }}-${{ github.run_number }}
-          path: app/build/outputs/apk/**/app-*.apk
+          name: app-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/standardDebug/app-standard-debug.apk
           retention-days: 30
 
-      - name: Show APK Size
+      - name: Upload Release APK
+        if: github.event.inputs.build_type == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-${{ github.run_number }}
+          path: app/build/outputs/apk/standardRelease/app-standard-release.apk
+          retention-days: 30
+
+      - name: Upload Release TV APK
+        if: github.event.inputs.build_type == 'release-tv'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-tv-${{ github.run_number }}
+          path: app/build/outputs/apk/tvRelease/app-tv-release.apk
+          retention-days: 30
+
+      - name: Show APK Info
         run: |
-          echo "Build Type: ${{ github.event.inputs.build_type }}"
-          du -h app/build/outputs/apk/**/app-*.apk | awk '{print "APK Size: " $1}'
+          BUILD_TYPE="${{ github.event.inputs.build_type }}"
+          if [ "$BUILD_TYPE" = "debug" ]; then
+            APK_PATH="app/build/outputs/apk/standardDebug/app-standard-debug.apk"
+            echo "✅ Build Type: Debug"
+          elif [ "$BUILD_TYPE" = "release" ]; then
+            APK_PATH="app/build/outputs/apk/standardRelease/app-standard-release.apk"
+            echo "✅ Build Type: Release (Standard)"
+          else
+            APK_PATH="app/build/outputs/apk/tvRelease/app-tv-release.apk"
+            echo "✅ Build Type: Release (TV-Optimized)"
+          fi
+          
+          if [ -f "$APK_PATH" ]; then
+            echo "📦 APK Size: $(du -h "$APK_PATH" | cut -f1)"
+            echo "📍 APK Path: $APK_PATH"
+          else
+            echo "❌ APK not found at $APK_PATH"
+            exit 1
+          fi
