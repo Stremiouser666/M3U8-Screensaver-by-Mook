@@ -66,7 +66,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-release-tv-${{ github.run_number }}
-          path: app/build/outputs/apk/tvRelease/app-tv-release.apk
+          path: app/build/outputs/apk/tv/release/app-tv-release.apk
           retention-days: 30
 
       - name: Show APK Info
@@ -79,7 +79,7 @@ jobs:
             APK_PATH="app/build/outputs/apk/standardRelease/app-standard-release.apk"
             echo "✅ Build Type: Release (Standard)"
           else
-            APK_PATH="app/build/outputs/apk/tvRelease/app-tv-release.apk"
+            APK_PATH="app/build/outputs/apk/tv/release/app-tv-release.apk"
             echo "✅ Build Type: Release (TV-Optimized)"
           fi
           
