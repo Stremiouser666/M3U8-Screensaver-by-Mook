@@ -1,4 +1,4 @@
-# ProGuard Rules for M3U8 Screensaver
+# ProGuard Rules for M3U8 Screensaver (Standard Flavor)
 
 # ======================
 # GENERAL RULES
