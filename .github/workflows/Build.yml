@@ -50,7 +50,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-${{ github.run_number }}
-          path: app/build/outputs/apk/standard/debug/*.apk
+          path: app/build/outputs/apk/**/app-*.apk
           retention-days: 30
 
       - name: Upload Release APK
@@ -58,7 +58,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-release-${{ github.run_number }}
-          path: app/build/outputs/apk/standard/release/*.apk
+          path: app/build/outputs/apk/**/app-*.apk
           retention-days: 30
 
       - name: Upload Release TV APK
@@ -66,7 +66,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-release-tv-${{ github.run_number }}
-          path: app/build/outputs/apk/tv/release/*.apk
+          path: app/build/outputs/apk/**/app-*.apk
           retention-days: 30
 
       - name: Find APK files
